@@ -1,217 +1,124 @@
-## Everything in this file and any files in the R directory are sourced during `simInit()`;
-## all functions and objects are put into the `simList`.
-## To use objects, use `sim$xxx` (they are globally available to all modules).
-## Functions can be used inside any function that was sourced in this module;
-## they are namespaced to the module, just like functions in R packages.
-## If exact location is required, functions will be: `sim$.mods$<moduleName>$FunctionName`.
 defineModule(sim, list(
   name = "bird_summary",
-  description = "",
-  keywords = "",
-  authors = structure(list(list(given = c("First", "Middle"), family = "Last", role = c("aut", "cre"), email = "email@example.com", comment = NULL)), class = "person"),
+  description = paste("Save and register single-bootstrap bird mosaics and pair/year metrics.",
+                      "In standalone multi mode, summarize completed runs from registered",
+                      "files or disk without loading saved simulations."),
+  keywords = c("birds", "BAM", "summary"),
+  authors = person("Sourav", "Das", role = c("aut", "cre")),
   childModules = character(0),
-  version = list(bird_summary = "0.0.0.9000"),
+  version = list(bird_summary = "0.1.0"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
-  documentation = list("NEWS.md", "README.md", "bird_summary.Rmd"),
-  reqdPkgs = list("PredictiveEcology/SpaDES.core@development (>= 3.2.1.9037)", "ggplot2"),
+  documentation = list("README.md", "bird_summary.Rmd"),
+  loadOrder = list(after = "bird_modelPredict"),
+  reqdPkgs = list("SpaDES.core (>= 3.2.1.9037)", "data.table", "terra"),
   parameters = bindrows(
-    #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter(".plots", "character", "screen", NA, NA,
-                    "Used by Plots function, which can be optionally used here"),
-    defineParameter(".plotInitialTime", "numeric", start(sim), NA, NA,
-                    "Describes the simulation time at which the first plot event should occur."),
-    defineParameter(".plotInterval", "numeric", NA, NA, NA,
-                    "Describes the simulation time interval between plot events."),
-    defineParameter(".saveInitialTime", "numeric", NA, NA, NA,
-                    "Describes the simulation time at which the first save event should occur."),
-    defineParameter(".saveInterval", "numeric", NA, NA, NA,
-                    "This describes the simulation time interval between save events."),
-    defineParameter(".studyAreaName", "character", NA, NA, NA,
-                    "Human-readable name for the study area used - e.g., a hash of the study",
-                          "area obtained using `reproducible::studyAreaName()`"),
-    ## .seed is optional: `list('init' = 123)` will `set.seed(123)` for the `init` event only.
-    defineParameter(".seed", "list", list(), NA, NA,
-                    "Named list of seeds to use for each event (names)."),
+    defineParameter("mode", "character", "single", NA, NA,
+                    "single saves the current replicate; multi postprocesses files from completed runs."),
+    defineParameter("simOutputPath", "character", outputPath(sim), NA, NA,
+                    "Root to scan recursively in multi mode when combined outputsDF is not supplied."),
+    defineParameter("reps", "integer", 1L:10L, 1L, NA_integer_,
+                    "Expected numeric replicate identifiers in multi mode, corresponding to rep1, rep2, etc."),
+    defineParameter("years", "integer", NA_integer_, NA, NA,
+                    paste("Exact simulation years to summarize, not a start/end range.",
+                          "Required in multi mode. Single mode may use bird_modelPredict's calendar.")),
+    defineParameter("species", "character", character(0), NA, NA,
+                    paste("Expected species codes. Required in multi mode.",
+                          "Single mode may use modelIndex filtered by bird_modelLoad's species selection.")),
+    defineParameter("repID", "character", NA_character_, NA, NA,
+                    "Single-mode replicate label, e.g. rep1; NA uses bird_modelPredict's repID."),
+    defineParameter("bootstrapID", "numeric", NA_real_, NA, NA,
+                    "Single-mode BAM bootstrap ID; NA uses the predictor's sole bootstrapIDs value."),
+    defineParameter("scenario", "character", NA_character_, NA, NA,
+                    "Required scenario label, kept separate in all summaries and output paths."),
+    defineParameter("climateScenario", "character", NA_character_, NA, NA,
+                    "Required climate forcing label, e.g. CanESM5_SSP370."),
+    defineParameter(".studyAreaName", "character", NA_character_, NA, NA,
+                    "Required reporting-area label; use the same label and raster support across runs."),
     defineParameter(".useCache", "logical", FALSE, NA, NA,
-                    "Should caching of events or module be used?")
-    ## Opt-in: pin a fixed cacheId per event so a pre-seeded Google Drive folder
-    ## can short-circuit a deterministic event to a download. To enable,
-    ## uncomment the block below (the leading `,` is valid R as a continuation),
-    ## edit the cacheId/cloudFolderID, and set `.useCache` above to include the
-    ## relevant event name(s), e.g. `c("init")`.
-    # ,defineParameter(".useCacheArgs", "list",
-    #                  list(init = list(cacheId       = "_v1.0",
-    #                                   useCloud      = TRUE,
-    #                                   cloudFolderID = "<google-drive-folder-id>")),
-    #                  NA, NA,
-    #                  paste("Optional named list, keyed by event name, of extra arguments",
-    #                        "passed to reproducible::Cache() for that event. Useful for",
-    #                        "pinning a fixed cacheId so a pre-seeded cloud folder can",
-    #                        "short-circuit a deterministic event."))
+                    "Caching is disabled by default so saved files are checked and registered on every run.")
   ),
   inputObjects = bindrows(
-    #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
+    expectsInput("mosaicedPredictions", "list",
+                 "Single mode only: [[species]][[year]] = one-layer SpatRaster in males/km2.", sourceURL = NA),
+    expectsInput("modelIndex", "data.table",
+                 "Optional single-mode species selection source from bird_modelLoad.", sourceURL = NA),
+    expectsInput("outputsDF", "data.table",
+                 "Optional multi-mode combined outputs(sim) records with a file column; never assembled automatically.", sourceURL = NA)
   ),
-  outputObjects = bindrows(
-    #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = NA, objectClass = NA, desc = NA)
-  )
+  outputObjects = data.frame()
 ))
 
-doEvent.bird_summary = function(sim, eventTime, eventType) {
-  switch(
-    eventType,
+doEvent.bird_summary <- function(sim, eventTime, eventType) {
+  switch(eventType,
     init = {
-      ### check for more detailed object dependencies:
-      ### (use `checkObject` or similar)
-
-      # do stuff for this event
-      sim <- Init(sim)
-
-      # schedule future event(s)
-      sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "bird_summary", "plot")
-      sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "bird_summary", "save")
+      config <- birdSummaryConfig(sim)
+      if (config$mode == "single") {
+        for (year in config$years) {
+          sim <- scheduleEvent(sim, year, "bird_summary", "save_single", .last())
+        }
+      } else {
+        sim <- InitMulti(sim)
+      }
     },
-    plot = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      plotFun(sim) # example of a plotting function
-      # schedule future event(s)
-
-      # e.g.,
-      #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "bird_summary", "plot")
-
-      # ! ----- STOP EDITING ----- ! #
+    save_single = {
+      sim <- SaveSingle(sim)
     },
-    save = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + P(sim)$.saveInterval, "bird_summary", "save")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event1 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "bird_summary", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event2 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "bird_summary", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    warning(noEventWarning(sim))
+    stop("bird_summary: unknown event type: ", eventType)
   )
   return(invisible(sim))
 }
 
-### template initialization
-Init <- function(sim) {
-  # # ! ----- EDIT BELOW ----- ! #
-
-  # ! ----- STOP EDITING ----- ! #
-
-  return(invisible(sim))
-}
-### template for save events
-Save <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  sim <- saveFiles(sim)
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for plot events
-plotFun <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  sampleData <- data.frame("TheSample" = sample(1:10, replace = TRUE))
-  Plots(sampleData, fn = ggplotFn) # needs ggplot2
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for your event1
-Event1 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event1Test1 <- " this is test for event 1. " # for dummy unit test
-  # sim$event1Test2 <- 999 # for dummy unit test
-
-  # ! ----- STOP EDITING ----- ! #
+SaveSingle <- function(sim) {
+  config <- birdSummaryConfig(sim)
+  year <- as.integer(time(sim))
+  if (!year %in% config$years) stop("bird_summary: unexpected save year: ", year)
+  rasters <- birdPairRasters(sim$mosaicedPredictions, config, year)
+  rows <- vector("list", length(rasters))
+  for (i in seq_along(rasters)) {
+    rows[[i]] <- birdRasterMetrics(rasters[[i]])
+    rows[[i]][, `:=`(
+      species = config$species[i], year = year, repID = config$repID,
+      bootstrapID = config$bootstrapID, scenario = config$scenario,
+      climateScenario = config$climateScenario, studyAreaName = config$studyAreaName
+    )]
+  }
+  destination <- birdSummaryDirectory(sim, config, config$repID, paste0("year_", year))
+  for (i in seq_along(rasters)) {
+    file <- file.path(destination, paste0(year, "_", config$species[i], "_mosaic_",
+                                         config$repID, "_boot-", config$bootstrapID, ".tif"))
+    terra::writeRaster(rasters[[i]], file, overwrite = TRUE)
+    rows[[i]][, rasterPath := normalizePath(file, mustWork = TRUE)]
+    sim <- registerOutputs(file, sim)
+  }
+  table <- data.table::rbindlist(rows)
+  file <- file.path(destination, paste0("birdPairSummary_year", year, "_",
+                                       config$repID, "_boot-", config$bootstrapID, ".csv"))
+  data.table::fwrite(table, file)
+  sim <- registerOutputs(file, sim)
+  message("bird_summary: saved ", nrow(table), " species for ", config$repID, " year ", year)
   return(invisible(sim))
 }
 
-### template for your event2
-Event2 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event2Test1 <- " this is test for event 2. " # for dummy unit test
-  # sim$event2Test2 <- 777  # for dummy unit test
-
-  # ! ----- STOP EDITING ----- ! #
+InitMulti <- function(sim) {
+  config <- birdSummaryConfig(sim)
+  files <- birdSummaryFiles(sim, config)
+  pairs <- birdReadPairTables(files, config)
+  birdValidatePairRasters(pairs)
+  annual <- birdAcrossPairMetrics(pairs)
+  destination <- birdSummaryDirectory(sim, config, "multi")
+  file <- file.path(destination, "birdAcrossPairSummary.csv")
+  data.table::fwrite(annual, file)
+  sim <- registerOutputs(file, sim)
+  file <- file.path(destination, "birdPairSummary_all.csv")
+  data.table::fwrite(pairs, file)
+  sim <- registerOutputs(file, sim)
+  message("bird_summary: combined ", length(config$reps), " replicates; NRV is not calculated.")
   return(invisible(sim))
 }
 
 .inputObjects <- function(sim) {
-  # Any code written here will be run during the simInit for the purpose of creating
-  # any objects required by this module and identified in the inputObjects element of defineModule.
-  # This is useful if there is something required before simulation to produce the module
-  # object dependencies, including such things as downloading default datasets, e.g.,
-  # downloadData("LCC2005", modulePath(sim)).
-  # Nothing should be created here that does not create a named object in inputObjects.
-  # Any other initiation procedures should be put in "init" eventType of the doEvent function.
-  # Note: the module developer can check if an object is 'suppliedElsewhere' to
-  # selectively skip unnecessary steps because the user has provided those inputObjects in the
-  # simInit call, or another module will supply or has supplied it. e.g.,
-  # if (!suppliedElsewhere('defaultColor', sim)) {
-  #   sim$map <- Cache(prepInputs, extractURL('map')) # download, extract, load file from url in sourceURL
-  # }
-
-  #cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
-  dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
-  message(currentModule(sim), ": using dataPath '", dPath, "'.")
-
-  # ! ----- EDIT BELOW ----- ! #
-
-  # ! ----- STOP EDITING ----- ! #
+  birdSummaryConfig(sim)
   return(invisible(sim))
 }
-
-ggplotFn <- function(data, ...) {
-  ggplot2::ggplot(data, ggplot2::aes(TheSample)) +
-    ggplot2::geom_histogram(...)
-}
-
