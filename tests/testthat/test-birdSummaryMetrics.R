@@ -62,3 +62,18 @@ test_that("single defaults resolve the predictor calendar and declared loader sp
   sim$parameters$bird_summary$bootstrapID <- 7
   expect_error(summary_env$birdSummaryConfig(sim), "must match the predictor")
 })
+
+test_that("only omitted single-mode species are deferred during initialization", {
+  p <- summary_parameters()
+  p$species <- character(0)
+  sim <- list(parameters = list(bird_summary = p))
+  expect_identical(summary_env$.inputObjects(sim), sim)
+  expect_identical(summary_env$birdSummaryConfig(sim, resolveSpecies = FALSE)$species,
+                   character(0))
+  expect_error(summary_env$birdSummaryConfig(sim), "modelIndex")
+  sim$parameters$bird_summary$species <- "invalid/code"
+  expect_error(summary_env$.inputObjects(sim), "species must be explicit")
+  sim$parameters$bird_summary <- summary_parameters("multi")
+  sim$parameters$bird_summary$species <- character(0)
+  expect_error(summary_env$.inputObjects(sim), "species must be explicit")
+})

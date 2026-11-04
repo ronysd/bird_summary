@@ -1,12 +1,12 @@
 defineModule(sim, list(
   name = "bird_summary",
   description = paste("Save and register single-bootstrap bird mosaics and pair/year metrics.",
-                      "In standalone multi mode, summarize completed runs from registered",
-                      "files or disk without loading saved simulations."),
+                      "In standalone multi mode, summarize completed runs and plot replicate",
+                      "density trajectories from registered files or disk."),
   keywords = c("birds", "BAM", "summary"),
   authors = person("Sourav", "Das", role = c("aut", "cre")),
   childModules = character(0),
-  version = list(bird_summary = "0.1.0"),
+  version = list(bird_summary = "0.1.3"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
@@ -53,7 +53,7 @@ defineModule(sim, list(
 doEvent.bird_summary <- function(sim, eventTime, eventType) {
   switch(eventType,
     init = {
-      config <- birdSummaryConfig(sim)
+      config <- birdSummaryConfig(sim, resolveSpecies = FALSE)
       if (config$mode == "single") {
         for (year in config$years) {
           sim <- scheduleEvent(sim, year, "bird_summary", "save_single", .last())
@@ -114,11 +114,13 @@ InitMulti <- function(sim) {
   file <- file.path(destination, "birdPairSummary_all.csv")
   data.table::fwrite(pairs, file)
   sim <- registerOutputs(file, sim)
+  plot_files <- birdPlotAcrossReplicateDensity(pairs, destination)
+  for (file in plot_files) sim <- registerOutputs(file, sim)
   message("bird_summary: combined ", length(config$reps), " replicates; NRV is not calculated.")
   return(invisible(sim))
 }
 
 .inputObjects <- function(sim) {
-  birdSummaryConfig(sim)
+  birdSummaryConfig(sim, resolveSpecies = FALSE)
   return(invisible(sim))
 }

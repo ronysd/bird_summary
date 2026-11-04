@@ -1,3 +1,34 @@
+test_that("inferred species work when an upstream module publishes modelIndex in init", {
+  local_summary_runtime()
+  root <- withr::local_tempdir()
+  module_path <- file.path(root, "modules")
+  dir.create(module_path)
+  expect_true(file.symlink(normalizePath(testthat::test_path("..", "..")),
+                           file.path(module_path, "bird_summary")))
+  expect_true(file.copy(testthat::test_path("fixtures", "birdSummaryProvider"),
+                         module_path, recursive = TRUE))
+  p <- summary_parameters()
+  p$species <- character(0)
+  sim <- SpaDES.core::simInit(
+    times = list(start = 2020, end = 2021),
+    modules = c("birdSummaryProvider", "bird_summary"),
+    params = list(bird_summary = p, .globals = list(verbose = FALSE)),
+    objects = list(fixturePredictions = bird_predictions()),
+    paths = list(modulePath = module_path, inputPath = file.path(root, "inputs"),
+                 outputPath = file.path(root, "outputs"), cachePath = file.path(root, "cache"),
+                 scratchPath = file.path(root, "scratch"))
+  )
+  expect_null(sim$modelIndex)
+  sim <- SpaDES.core::spades(sim, .plots = "none", progress = FALSE)
+  expect_setequal(sim$modelIndex$species, c("GCKI", "RCKI"))
+  files <- SpaDES.core::outputs(sim)$file
+  tables <- files[grepl("\\.csv$", files)]
+  expect_length(tables, 2)
+  for (file in tables) {
+    expect_setequal(data.table::fread(file)$species, c("GCKI", "RCKI"))
+  }
+})
+
 test_that("single and standalone multi modes communicate through saved registered files", {
   local_summary_runtime()
   root <- withr::local_tempdir()
@@ -21,6 +52,11 @@ test_that("single and standalone multi modes communicate through saved registere
   output_files <- SpaDES.core::outputs(multi)$file
   annual_file <- output_files[basename(output_files) == "birdAcrossPairSummary.csv"]
   expect_length(annual_file, 1)
+  plot_files <- output_files[grepl("\\.png$", output_files)]
+  expect_length(plot_files, 2)
+  expect_true(all(file.exists(plot_files)))
+  expect_setequal(basename(plot_files),
+                  paste0("birdAcrossReplicateDensity_", c("GCKI", "RCKI"), ".png"))
   annual <- data.table::fread(annual_file)
   expect_equal(nrow(annual), 12)
   expect_true(all(annual$nPairs == 2))

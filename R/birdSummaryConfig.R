@@ -1,8 +1,10 @@
 #' Resolve and validate the summary selection before scheduling or acquisition
 #' @param sim Simulation with bird_summary parameters.
+#' @param resolveSpecies Require inferred species now; FALSE defers an omitted
+#'   single-mode selection until upstream initialization has published modelIndex.
 #' @return Validated configuration list.
 #' @keywords internal
-birdSummaryConfig <- function(sim) {
+birdSummaryConfig <- function(sim, resolveSpecies = TRUE) {
   p <- params(sim)$bird_summary
   if (!is.character(p$mode) || length(p$mode) != 1L || is.na(p$mode) ||
       !p$mode %in% c("single", "multi")) {
@@ -38,7 +40,9 @@ birdSummaryConfig <- function(sim) {
     stop("bird_summary: save years must lie inside the simulation calendar.")
   }
   species <- p$species
-  if (p$mode == "single" && is.character(species) && !length(species)) {
+  deferred_species <- p$mode == "single" && is.character(species) &&
+    !length(species) && !resolveSpecies
+  if (p$mode == "single" && is.character(species) && !length(species) && resolveSpecies) {
     index <- sim$modelIndex
     if (is.null(index) || !"species" %in% names(index)) {
       stop("bird_summary: supply species or a modelIndex with species codes.")
@@ -47,9 +51,9 @@ birdSummaryConfig <- function(sim) {
     requested <- params(sim)$bird_modelLoad$species
     if (length(requested)) species <- intersect(species, toupper(trimws(requested)))
   }
-  if (!is.character(species) || !length(species) || anyNA(species) ||
+  if (!deferred_species && (!is.character(species) || !length(species) || anyNA(species) ||
       any(!grepl("^[A-Za-z][A-Za-z0-9]*$", species)) ||
-      anyDuplicated(toupper(species))) {
+      anyDuplicated(toupper(species)))) {
     stop("bird_summary: species must be explicit unique species codes.")
   }
   config$species <- sort(toupper(species))

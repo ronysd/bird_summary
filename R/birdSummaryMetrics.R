@@ -71,3 +71,58 @@ birdAcrossPairMetrics <- function(pairs) {
   annual[, units := data.table::fifelse(metric == "totalAbundance", "males", "males/km2")]
   annual
 }
+
+#' Plot replicate density trajectories for each species
+#' @param pairs Validated pair/year metrics table.
+#' @param destination Existing directory for multi-mode outputs.
+#' @return Character vector of saved PNG paths.
+#' @keywords internal
+birdPlotAcrossReplicateDensity <- function(pairs, destination) {
+  species_codes <- sort(unique(pairs$species))
+  files <- character(length(species_codes))
+  for (i in seq_along(species_codes)) {
+    selected_species <- species_codes[i]
+    selected_rows <- pairs$species == selected_species
+    species_pairs <- pairs[selected_rows, ]
+    years <- sort(unique(species_pairs$year))
+    replicates <- sort(unique(species_pairs$repID))
+    data.table::setorder(species_pairs, repID, year)
+    annual_mean <- species_pairs[, .(meanDensity = mean(meanDensity)), by = year]
+    file <- file.path(destination, paste0("birdAcrossReplicateDensity_", selected_species, ".png"))
+    grDevices::png(filename = file, width = 1200, height = 800, res = 120)
+    device <- grDevices::dev.cur()
+    on.exit(if (grDevices::dev.cur() == device) grDevices::dev.off(), add = TRUE)
+
+    x_limits <- range(years)
+    if (x_limits[1] == x_limits[2]) x_limits <- x_limits + c(-1, 1)
+    max_density <- max(species_pairs$meanDensity)
+    y_limits <- c(0, if (max_density > 0) max_density * 1.08 else 1)
+    graphics::plot(NA, xlim = x_limits, ylim = y_limits, xlab = "Simulation year",
+                   ylab = "Area-weighted mean density (males/km2)",
+                   main = paste(selected_species, "density across landscape replicates"),
+                   xaxt = "n")
+    ticks <- if (length(years) < 8L) years else pretty(years, n = 7)
+    ticks <- ticks[ticks >= min(years) & ticks <= max(years)]
+    if (!length(ticks)) ticks <- years
+    graphics::axis(1, at = ticks, labels = round(ticks), las = 2)
+    graphics::abline(h = pretty(y_limits, n = 5), col = "grey90", lty = "dotted")
+    for (replicate in replicates) {
+      replicate_pairs <- species_pairs[species_pairs$repID == replicate, ]
+      graphics::lines(replicate_pairs$year, replicate_pairs$meanDensity,
+                      col = "grey65", lty = 1)
+      graphics::points(replicate_pairs$year, replicate_pairs$meanDensity,
+                       col = "grey45", pch = 16)
+    }
+    graphics::lines(annual_mean$year, annual_mean$meanDensity, col = "#1F4E79", lwd = 3)
+    graphics::points(annual_mean$year, annual_mean$meanDensity,
+                     col = "#1F4E79", pch = 18, cex = 1.2)
+    graphics::legend("topleft", legend = c("Individual replicate", "Across-replicate mean"),
+                     col = c("grey55", "#1F4E79"), lty = 1, lwd = c(1, 3),
+                     pch = c(16, 18), bty = "n")
+    graphics::mtext("Descriptive replicate comparison; not an NRV range",
+                    side = 3, line = 0.2, adj = 1, cex = 0.8, col = "grey35")
+    grDevices::dev.off()
+    files[i] <- normalizePath(file, mustWork = TRUE)
+  }
+  files
+}

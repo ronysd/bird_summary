@@ -26,7 +26,10 @@ provider other than the predictor, specify both. `repID` uses `rep1`, not numeri
 
 `years` is an exact selection, not a range. If omitted, single mode uses the
 predictor calendar. If `species` is omitted, it uses the loader's model index
-and species selection. Saving occurs at each selected year at last event
+and species selection. This selection is resolved when saving, not during
+`.inputObjects` or summary initialization: the loader creates `modelIndex` in
+its `init` event. A missing index still stops the save rather than silently
+omitting species. Saving occurs at each selected year at last event
 priority, after predictions; no other module's events are scheduled.
 
 Single mode validates one-layer `bBOOT_YEAR` mosaics for every requested species,
@@ -66,8 +69,9 @@ params <- list(
 Multi mode needs no dummy `mosaicedPredictions`, models, downloads, or saved
 simLists. Pass `outputsDF` as a combined `data.table::rbindlist()` of the
 completed runs' `SpaDES.core::outputs(sim)` records if available. Registration
-does **not** combine simulations automatically. Without a nonempty registry,
-the module recursively scans `simOutputPath`. With a registry, it uses those
+does **not** combine simulations automatically, so providing `objects =
+list(outputsDF = outputsDF)` is optional. If omitted (or empty), the module
+recursively scans `simOutputPath`. With a nonempty registry, it uses those
 paths only: missing registered files cause an error, not a fallback to disk.
 Scanning predictor rasters alone is insufficient; single-mode pair CSVs must
 exist. Recorded paths need to remain accessible if outputs are moved.
@@ -84,6 +88,9 @@ Under the context's `multi/` directory it writes/registers:
 - `birdAcrossPairSummary.csv`: annual across-pair mean, median, and pair counts
   for area-weighted mean density, pixel median density, and abundance, with
   an explicit units column.
+- `birdAcrossReplicateDensity_SPECIES.png`: per-replicate trajectories of
+  area-weighted mean density, overlaid with the across-replicate mean. These
+  descriptive plots do not define or display an NRV range.
 
 ## Scientific meaning and limits
 
@@ -102,8 +109,9 @@ Across-pair statistics describe the paired landscape/model predictions, not
 separate landscape and model uncertainties. Years remain separate. **NRV is not
 calculated**: reference scenario, period, burn-in, temporal weighting and bounds
 must be explicitly agreed before adding reference distributions. Metadata alone
-does not establish an NRV policy. SD, quantiles, temporal changes, and spatial
-summary maps are outside this initial version.
+does not establish an NRV policy. SD, quantiles, temporal changes, spatial
+summary maps, and current-status-versus-NRV comparisons are outside this version.
+The year 2020 is not treated as an NRV reference by default.
 
 Run local fixture tests from this module directory:
 `testthat::test_dir("tests/testthat")`.
