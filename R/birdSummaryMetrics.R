@@ -72,12 +72,22 @@ birdAcrossPairMetrics <- function(pairs) {
   annual
 }
 
-#' Plot replicate density trajectories for each species
+#' Plot replicate metric trajectories for each species
 #' @param pairs Validated pair/year metrics table.
 #' @param destination Existing directory for multi-mode outputs.
+#' @param metric One supported metric name.
 #' @return Character vector of saved PNG paths.
 #' @keywords internal
-birdPlotAcrossReplicateDensity <- function(pairs, destination) {
+birdPlotAcrossReplicateMetrics <- function(pairs, destination, metric) {
+  label <- switch(metric,
+    meanDensity = list(stem = "Density", title = "area-weighted mean density",
+                       axis = expression("Area-weighted mean density (males/" * km^2 * ")")),
+    totalAbundance = list(stem = "TotalAbundance", title = "total predicted abundance",
+                          axis = "Total predicted abundance (males)"),
+    medianDensity = list(stem = "MedianDensity", title = "median pixel density",
+                         axis = expression("Median pixel density (males/" * km^2 * ")")),
+    stop("bird_summary: unsupported plot metric: ", metric)
+  )
   species_codes <- sort(unique(pairs$species))
   files <- character(length(species_codes))
   for (i in seq_along(species_codes)) {
@@ -87,19 +97,21 @@ birdPlotAcrossReplicateDensity <- function(pairs, destination) {
     years <- sort(unique(species_pairs$year))
     replicates <- sort(unique(species_pairs$repID))
     data.table::setorder(species_pairs, repID, year)
-    annual_mean <- species_pairs[, .(meanDensity = mean(meanDensity)), by = year]
-    file <- file.path(destination, paste0("birdAcrossReplicateDensity_", selected_species, ".png"))
+    annual_mean <- species_pairs[, .(value = mean(get(metric))), by = year]
+    file <- file.path(destination, paste0("birdAcrossReplicate", label$stem, "_",
+                                         selected_species, ".png"))
     grDevices::png(filename = file, width = 1200, height = 800, res = 120)
     device <- grDevices::dev.cur()
     on.exit(if (grDevices::dev.cur() == device) grDevices::dev.off(), add = TRUE)
+    graphics::par(mar = c(5.1, 6.1, 4.1, 2.1))
 
     x_limits <- range(years)
     if (x_limits[1] == x_limits[2]) x_limits <- x_limits + c(-1, 1)
-    max_density <- max(species_pairs$meanDensity)
-    y_limits <- c(0, if (max_density > 0) max_density * 1.08 else 1)
-    graphics::plot(NA, xlim = x_limits, ylim = y_limits, xlab = "Simulation year",
-                   ylab = "Area-weighted mean density (males/km2)",
-                   main = paste(selected_species, "density across landscape replicates"),
+    max_value <- max(species_pairs[[metric]])
+    y_limits <- c(0, if (max_value > 0) max_value * 1.08 else 1)
+    graphics::plot.default(NA, xlim = x_limits, ylim = y_limits, xlab = "Simulation year",
+                   ylab = label$axis,
+                   main = paste(selected_species, "-", label$title),
                    xaxt = "n")
     ticks <- if (length(years) < 8L) years else pretty(years, n = 7)
     ticks <- ticks[ticks >= min(years) & ticks <= max(years)]
@@ -108,13 +120,13 @@ birdPlotAcrossReplicateDensity <- function(pairs, destination) {
     graphics::abline(h = pretty(y_limits, n = 5), col = "grey90", lty = "dotted")
     for (replicate in replicates) {
       replicate_pairs <- species_pairs[species_pairs$repID == replicate, ]
-      graphics::lines(replicate_pairs$year, replicate_pairs$meanDensity,
+      graphics::lines(replicate_pairs$year, replicate_pairs[[metric]],
                       col = "grey65", lty = 1)
-      graphics::points(replicate_pairs$year, replicate_pairs$meanDensity,
+      graphics::points(replicate_pairs$year, replicate_pairs[[metric]],
                        col = "grey45", pch = 16)
     }
-    graphics::lines(annual_mean$year, annual_mean$meanDensity, col = "#1F4E79", lwd = 3)
-    graphics::points(annual_mean$year, annual_mean$meanDensity,
+    graphics::lines(annual_mean$year, annual_mean$value, col = "#1F4E79", lwd = 3)
+    graphics::points(annual_mean$year, annual_mean$value,
                      col = "#1F4E79", pch = 18, cex = 1.2)
     graphics::legend("topleft", legend = c("Individual replicate", "Across-replicate mean"),
                      col = c("grey55", "#1F4E79"), lty = 1, lwd = c(1, 3),

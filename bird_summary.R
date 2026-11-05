@@ -2,11 +2,11 @@ defineModule(sim, list(
   name = "bird_summary",
   description = paste("Save and register single-bootstrap bird mosaics and pair/year metrics.",
                       "In standalone multi mode, summarize completed runs and plot replicate",
-                      "density trajectories from registered files or disk."),
+                      "metric trajectories from registered files or disk."),
   keywords = c("birds", "BAM", "summary"),
   authors = person("Sourav", "Das", role = c("aut", "cre")),
   childModules = character(0),
-  version = list(bird_summary = "0.1.3"),
+  version = list(bird_summary = "0.1.4"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
@@ -26,6 +26,12 @@ defineModule(sim, list(
     defineParameter("species", "character", character(0), NA, NA,
                     paste("Expected species codes. Required in multi mode.",
                           "Single mode may use modelIndex filtered by bird_modelLoad's species selection.")),
+    defineParameter("plotMetrics", "character",
+                    c("meanDensity", "totalAbundance", "medianDensity"), NA, NA,
+                    paste("Multi-mode metrics to plot per species: meanDensity (area-weighted males/km2),",
+                          "totalAbundance (predicted males), medianDensity (unweighted pixel males/km2).",
+                          "Default plots all three; character(0) disables plots. CSV metrics are unchanged.",
+                          "These descriptive metrics do not define NRV reference bounds.")),
     defineParameter("repID", "character", NA_character_, NA, NA,
                     "Single-mode replicate label, e.g. rep1; NA uses bird_modelPredict's repID."),
     defineParameter("bootstrapID", "numeric", NA_real_, NA, NA,
@@ -114,8 +120,10 @@ InitMulti <- function(sim) {
   file <- file.path(destination, "birdPairSummary_all.csv")
   data.table::fwrite(pairs, file)
   sim <- registerOutputs(file, sim)
-  plot_files <- birdPlotAcrossReplicateDensity(pairs, destination)
-  for (file in plot_files) sim <- registerOutputs(file, sim)
+  for (metric in config$plotMetrics) {
+    plot_files <- birdPlotAcrossReplicateMetrics(pairs, destination, metric)
+    for (file in plot_files) sim <- registerOutputs(file, sim)
+  }
   message("bird_summary: combined ", length(config$reps), " replicates; NRV is not calculated.")
   return(invisible(sim))
 }

@@ -1,3 +1,11 @@
+# bird_summary 0.1.4 (4 November 2026)
+
+- Add `plotMetrics` to select mean density, total abundance, and/or median pixel
+  density plots; default to all three, or disable with `character(0)`.
+- Display density units with a superscript square and retain species codes in
+  every plot title. CSV units, calculations, and existing density filenames
+  remain unchanged. NRV reference distributions remain deferred.
+
 # bird_summary 0.1.3 (4 November 2026)
 
 - Fix species filtering in density plots: each figure now contains only its

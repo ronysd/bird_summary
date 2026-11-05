@@ -11,6 +11,13 @@ birdSummaryConfig <- function(sim, resolveSpecies = TRUE) {
     stop("bird_summary: mode must be single or multi.")
   }
   config <- list(mode = p$mode)
+  metrics <- p$plotMetrics
+  if (!is.character(metrics) || anyNA(metrics) || anyDuplicated(metrics) ||
+      any(!metrics %in% c("meanDensity", "totalAbundance", "medianDensity"))) {
+    stop("bird_summary: plotMetrics must contain unique supported metric names: ",
+         "meanDensity, totalAbundance, medianDensity; use character(0) for no plots.")
+  }
+  config$plotMetrics <- metrics
   for (field in c("scenario", "climateScenario", ".studyAreaName")) {
     value <- p[[field]]
     if (!is.character(value) || length(value) != 1L || is.na(value) ||

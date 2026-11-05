@@ -53,10 +53,12 @@ test_that("single and standalone multi modes communicate through saved registere
   annual_file <- output_files[basename(output_files) == "birdAcrossPairSummary.csv"]
   expect_length(annual_file, 1)
   plot_files <- output_files[grepl("\\.png$", output_files)]
-  expect_length(plot_files, 2)
+  expect_length(plot_files, 6)
   expect_true(all(file.exists(plot_files)))
   expect_setequal(basename(plot_files),
-                  paste0("birdAcrossReplicateDensity_", c("GCKI", "RCKI"), ".png"))
+                  paste0("birdAcrossReplicate",
+                         rep(c("Density", "TotalAbundance", "MedianDensity"), each = 2),
+                         "_", c("GCKI", "RCKI"), ".png"))
   annual <- data.table::fread(annual_file)
   expect_equal(nrow(annual), 12)
   expect_true(all(annual$nPairs == 2))
@@ -67,6 +69,14 @@ test_that("single and standalone multi modes communicate through saved registere
   scanned <- data.table::fread(SpaDES.core::outputs(scan)$file[
     basename(SpaDES.core::outputs(scan)$file) == "birdAcrossPairSummary.csv"])
   expect_equal(as.data.frame(scanned), as.data.frame(annual))
+  p$plotMetrics <- "totalAbundance"
+  selected <- run_summary_sim(root, p, list(outputsDF = combined), label = "abundance-only")
+  selected_files <- SpaDES.core::outputs(selected)$file
+  expect_setequal(basename(selected_files[grepl("\\.png$", selected_files)]),
+                  paste0("birdAcrossReplicateTotalAbundance_", c("GCKI", "RCKI"), ".png"))
+  p$plotMetrics <- character(0)
+  no_plots <- run_summary_sim(root, p, list(outputsDF = combined), label = "no-plots")
+  expect_false(any(grepl("\\.png$", SpaDES.core::outputs(no_plots)$file)))
 
   config <- summary_env$birdSummaryConfig(list(parameters = list(bird_summary = p)))
   tables <- combined$file[grepl("\\.csv$", combined$file)]

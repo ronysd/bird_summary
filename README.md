@@ -89,8 +89,26 @@ Under the context's `multi/` directory it writes/registers:
   for area-weighted mean density, pixel median density, and abundance, with
   an explicit units column.
 - `birdAcrossReplicateDensity_SPECIES.png`: per-replicate trajectories of
-  area-weighted mean density, overlaid with the across-replicate mean. These
-  descriptive plots do not define or display an NRV range.
+  area-weighted mean density (males per square kilometre).
+- `birdAcrossReplicateTotalAbundance_SPECIES.png`: total predicted males.
+- `birdAcrossReplicateMedianDensity_SPECIES.png`: unweighted median pixel
+  density (males per square kilometre).
+
+The multi-mode `plotMetrics` parameter defaults to
+`c("meanDensity", "totalAbundance", "medianDensity")`. Supply a subset to select
+plots, or `character(0)` to disable them. All CSV metrics are still calculated.
+Each plot title contains the species code and metric. Grey trajectories show
+individual replicates; the blue trajectory shows their annual mean.
+Only plots from the current selection are registered; old plots from earlier
+selections are not deleted.
+
+These are descriptive response metrics, not NRV bounds. Mean density is useful
+for density comparisons, and abundance for reporting total predicted males
+within the reporting area. With identical reporting area/support, total abundance
+and mean density are proportional, so they are not independent indices.
+Median pixel density describes the typical pixel but does not integrate to total
+abundance. None of these choices establishes the reference period, burn-in,
+temporal weighting or range required for an NRV calculation.
 
 ## Scientific meaning and limits
 
