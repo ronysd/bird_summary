@@ -110,7 +110,8 @@ The multi-mode `plotMetrics` parameter defaults to
 plots, or `character(0)` to disable them. All CSV metrics are still calculated.
 Each plot title contains the species code and metric. Grey trajectories show
 individual replicates; the blue trajectory shows their annual median for each
-year across the selected replicates.
+year across the selected replicates. Trajectories are shown without point
+markers, and vertical dotted guides mark each plotted year.
 Legends occupy a separate panel below the axes, outside the curve area.
 PNG dimensions are 1200 by 950 pixels.
 All three plot types shade the visible portion of simulation years 2720-3020

@@ -6,7 +6,7 @@ defineModule(sim, list(
   keywords = c("birds", "BAM", "summary"),
   authors = person("Sourav", "Das", role = c("aut", "cre")),
   childModules = character(0),
-  version = list(bird_summary = "0.1.9"),
+  version = list(bird_summary = "0.1.10"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),

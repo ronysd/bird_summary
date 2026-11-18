@@ -1,3 +1,8 @@
+# bird_summary 0.1.10 (18 November 2026)
+
+- Remove point markers from replicate and median trajectories and add vertical
+  dotted guides for plotted years.
+
 # bird_summary 0.1.9 (18 November 2026)
 
 - Plot the across-replicate median trajectory instead of the mean. Individual

@@ -102,6 +102,47 @@ test_that("five-replicate plot trajectory is the median, not the mean", {
   expect_true("Across-replicate median" %in% labels)
 })
 
+test_that("plot trajectories have no point markers and years have vertical guides", {
+  root <- withr::local_tempdir()
+  pairs <- data.table::data.table(
+    species = "GCKI", repID = paste0("rep", 1:5),
+    year = rep(c(2020L, 2120L), each = 5),
+    meanDensity = seq_len(10)
+  )
+  point_calls <- 0L
+  vertical_guides <- list()
+  original_points <- graphics::points
+  original_abline <- graphics::abline
+  testthat::local_mocked_bindings(
+    points = function(...) {
+      point_calls <<- point_calls + 1L
+      original_points(...)
+    },
+    legend = function(...) invisible(NULL),
+    abline = function(..., h = NULL, v = NULL, col = NULL, lty = NULL, lwd = NULL) {
+      if (!is.null(v)) {
+        vertical_guides[[length(vertical_guides) + 1L]] <<- list(v = v, col = col, lty = lty)
+      }
+      args <- list(...)
+      if (!is.null(h)) args$h <- h
+      if (!is.null(v)) args$v <- v
+      if (!is.null(col)) args$col <- col
+      if (!is.null(lty)) args$lty <- lty
+      if (!is.null(lwd)) args$lwd <- lwd
+      do.call(original_abline, args)
+    },
+    .package = "graphics"
+  )
+
+  summary_env$birdPlotAcrossReplicateMetrics(pairs, root, "meanDensity")
+
+  expect_identical(point_calls, 0L)
+  expect_length(vertical_guides, 1L)
+  expect_identical(vertical_guides[[1L]]$v, c(2020L, 2120L))
+  expect_identical(vertical_guides[[1L]]$col, "grey90")
+  expect_identical(vertical_guides[[1L]]$lty, "dotted")
+})
+
 test_that("FireSense reference shading uses exact visible years in every metric plot", {
   root <- withr::local_tempdir()
   pairs <- data.table::data.table(

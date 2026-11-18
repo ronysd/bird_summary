@@ -174,16 +174,13 @@ birdPlotAcrossReplicateMetrics <- function(pairs, destination, metric, bounds = 
     if (!length(ticks)) ticks <- years
     graphics::axis(1, at = ticks, labels = round(ticks), las = 2)
     graphics::abline(h = pretty(y_limits, n = 5), col = "grey90", lty = "dotted")
+    graphics::abline(v = years, col = "grey90", lty = "dotted")
     for (replicate in replicates) {
       replicate_pairs <- species_pairs[species_pairs$repID == replicate, ]
       graphics::lines(replicate_pairs$year, replicate_pairs[[metric]],
                       col = "grey65", lty = 1)
-      graphics::points(replicate_pairs$year, replicate_pairs[[metric]],
-                       col = "grey45", pch = 16)
     }
     graphics::lines(annual_median$year, annual_median$value, col = "#1F4E79", lwd = 3)
-    graphics::points(annual_median$year, annual_median$value,
-                     col = "#1F4E79", pch = 18, cex = 1.2)
     if (!is.null(species_bounds)) {
       graphics::abline(h = c(species_bounds$lower, species_bounds$upper),
                        col = "#9A4B25", lty = 2, lwd = 2)
@@ -192,7 +189,7 @@ birdPlotAcrossReplicateMetrics <- function(pairs, destination, metric, bounds = 
     legend_colours <- c("grey55", "#1F4E79")
     legend_lines <- c(1, 1)
     legend_widths <- c(1, 3)
-    legend_points <- c(16, 18)
+    legend_points <- c(NA, NA)
     legend_fills <- c(NA, NA)
     if (show_reference) {
       legend_labels <- c(legend_labels, "FireSense NRV reference years")
