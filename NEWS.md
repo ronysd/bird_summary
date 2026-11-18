@@ -1,3 +1,13 @@
+# bird_summary 0.1.5 (5 November 2026)
+
+- Single mode now references the predictor's existing `summaries` meanPath TIFFs
+  instead of writing duplicate rasters. Metrics are calculated from those saved
+  files; only pair/year CSVs are written and registered by single mode.
+- Preserve multi-mode support for older snapshot-backed CSVs. Predictor files
+  must remain accessible and unchanged; missing or mismatched files stop clearly.
+- Document shared-file lifetime and predictor output collisions (MP-H3, MP-M2,
+  MP-M4, MP-L1 shared-interface follow-up; no predictor code changes).
+
 # bird_summary 0.1.4 (4 November 2026)
 
 - Add `plotMetrics` to select mean density, total abundance, and/or median pixel

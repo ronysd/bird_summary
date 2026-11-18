@@ -1,25 +1,26 @@
-#' Validate selected single-bootstrap mosaics
-#' @param predictions Species/year raster list.
+#' Read selected saved single-bootstrap mosaics without copying them
+#' @param summaries Predictor species/year list with a meanPath per entry.
 #' @param config Validated summary configuration.
 #' @param year Simulation year.
-#' @return Named list of selected rasters.
+#' @return Selected rasters and their absolute existing file paths.
 #' @keywords internal
-birdPairRasters <- function(predictions, config, year) {
-  if (!is.list(predictions) || !length(predictions)) {
-    stop("bird_summary: mosaicedPredictions must be populated before save_single.")
+birdPairRasters <- function(summaries, config, year) {
+  if (!is.list(summaries) || !length(summaries)) {
+    stop("bird_summary: summaries with saved meanPath files must be populated before save_single.")
   }
   rasters <- vector("list", length(config$species))
   names(rasters) <- config$species
+  paths <- character(length(rasters))
   for (species in config$species) {
-    raster <- predictions[[species]][[as.character(year)]]
-    if (!inherits(raster, "SpatRaster") || terra::nlyr(raster) != 1L ||
-        !identical(names(raster), paste0("b", config$bootstrapID, "_", year))) {
-      stop("bird_summary: missing or mismatched single-bootstrap mosaic for ", species,
-           " year ", year, " bootstrap ", config$bootstrapID, ".")
+    entry <- summaries[[species]][[as.character(year)]]
+    if (!is.list(entry)) {
+      stop("bird_summary: missing saved summary for ", species, " year ", year, ".")
     }
-    rasters[[species]] <- raster
+    file <- entry$meanPath
+    rasters[[species]] <- birdReadPairRaster(file, species, year, config$repID, config$bootstrapID)
+    paths[match(species, config$species)] <- normalizePath(file, mustWork = TRUE)
   }
-  rasters
+  list(rasters = rasters, paths = paths)
 }
 
 #' Summarize a density raster on its nonmissing reporting support

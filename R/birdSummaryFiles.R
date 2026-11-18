@@ -103,6 +103,33 @@ birdReadPairTables <- function(files, config) {
   pairs
 }
 
+#' Read a saved predictor mosaic or legacy summary snapshot with matching identity
+#' @param file Existing GeoTIFF path.
+#' @param species Species code.
+#' @param year Simulation year.
+#' @param repID Replicate label.
+#' @param bootstrapID Single BAM bootstrap identifier.
+#' @return One-layer SpatRaster.
+#' @keywords internal
+birdReadPairRaster <- function(file, species, year, repID, bootstrapID) {
+  if (!is.character(file) || length(file) != 1L || is.na(file) ||
+      !nzchar(file) || !file.exists(file)) {
+    stop("bird_summary: missing pair raster; a saved meanPath is required: ", paste(file, collapse = ", "))
+  }
+  expected <- paste0(year, "_", species, "_mosaic_", repID,
+                      "_boot-", bootstrapID, ".tif")
+  if (!identical(basename(file), expected)) {
+    stop("bird_summary: raster filename conflicts with pair identity: ", file)
+  }
+  raster <- terra::rast(file)
+  # Predictor summaries use "mean"; older summary snapshots retain bBOOT_YEAR.
+  if (terra::nlyr(raster) != 1L ||
+      !names(raster) %in% c("mean", paste0("b", bootstrapID, "_", year))) {
+    stop("bird_summary: raster layer conflicts with pair identity: ", file)
+  }
+  raster
+}
+
 #' Verify raster identity, geometry, reporting support and persisted metric values
 #' @param pairs Validated pair metrics table.
 #' @return Invisible TRUE.
@@ -112,16 +139,7 @@ birdValidatePairRasters <- function(pairs) {
   for (i in seq_len(nrow(pairs))) {
     row <- pairs[i]
     file <- row$rasterPath
-    if (!is.character(file) || length(file) != 1L || is.na(file) || !file.exists(file)) {
-      stop("bird_summary: missing pair raster: ", file)
-    }
-    expected <- paste0(row$year, "_", row$species, "_mosaic_", row$repID,
-                        "_boot-", row$bootstrapID, ".tif")
-    if (!identical(basename(file), expected)) stop("bird_summary: raster filename conflicts with pair identity: ", file)
-    raster <- terra::rast(file)
-    if (terra::nlyr(raster) != 1L || !identical(names(raster), paste0("b", row$bootstrapID, "_", row$year))) {
-      stop("bird_summary: raster layer conflicts with pair identity: ", file)
-    }
+    raster <- birdReadPairRaster(file, row$species, row$year, row$repID, row$bootstrapID)
     template <- templates[[row$species]]
     if (!is.null(template)) {
       if (!terra::compareGeom(template, raster, stopOnError = FALSE)) {

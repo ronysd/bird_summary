@@ -31,6 +31,23 @@ bird_predictions <- function(boot = 31, offset = 0) {
   predictions
 }
 
+bird_saved_summaries <- function(root, predictions = bird_predictions(), rep = "rep1", boot = 31) {
+  summaries <- list()
+  for (species in names(predictions)) {
+    summaries[[species]] <- list()
+    for (year in names(predictions[[species]])) {
+      destination <- file.path(root, "bird_modelPredict", rep, paste0("year_", year), "summaries")
+      dir.create(destination, recursive = TRUE, showWarnings = FALSE)
+      file <- file.path(destination, paste0(year, "_", species, "_mosaic_", rep,
+                                           "_boot-", boot, ".tif"))
+      raster <- terra::app(predictions[[species]][[year]], mean, na.rm = TRUE)
+      terra::writeRaster(raster, file, overwrite = TRUE)
+      summaries[[species]][[year]] <- list(mean = raster, meanPath = normalizePath(file))
+    }
+  }
+  summaries
+}
+
 local_summary_runtime <- function(envir = parent.frame()) {
   withr::local_options(repos = c(CRAN = "https://cloud.r-project.org"), .local_envir = envir)
   testthat::local_mocked_bindings(

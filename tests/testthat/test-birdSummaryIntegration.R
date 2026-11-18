@@ -13,7 +13,7 @@ test_that("inferred species work when an upstream module publishes modelIndex in
     times = list(start = 2020, end = 2021),
     modules = c("birdSummaryProvider", "bird_summary"),
     params = list(bird_summary = p, .globals = list(verbose = FALSE)),
-    objects = list(fixturePredictions = bird_predictions()),
+    objects = list(fixtureSummaries = bird_saved_summaries(root)),
     paths = list(modulePath = module_path, inputPath = file.path(root, "inputs"),
                  outputPath = file.path(root, "outputs"), cachePath = file.path(root, "cache"),
                  scratchPath = file.path(root, "scratch"))
@@ -35,20 +35,32 @@ test_that("single and standalone multi modes communicate through saved registere
   registry <- list()
   for (rep in 1:2) {
     p <- summary_parameters(rep = paste0("rep", rep), boot = 30 + rep)
-    sim <- run_summary_sim(root, p, list(mosaicedPredictions = bird_predictions(30 + rep, rep - 1)))
+    summaries <- bird_saved_summaries(root, bird_predictions(30 + rep, rep - 1),
+                                      p$repID, 30 + rep)
+    predictor_files <- list.files(file.path(root, "bird_modelPredict", p$repID),
+                                  pattern = "\\.tif$", recursive = TRUE, full.names = TRUE)
+    original_hashes <- tools::md5sum(predictor_files)
+    sim <- run_summary_sim(root, p, list(summaries = summaries))
     expect_s4_class(sim, "simList")
     expect_null(sim$birdPairSummary)
     expect_null(sim$birdAcrossPairSummary)
     files <- SpaDES.core::outputs(sim)$file
     expect_length(grep("\\.csv$", files), 2)
-    expect_length(grep("\\.tif$", files), 4)
+    expect_length(grep("\\.tif$", files), 0)
     expect_true(all(file.exists(files)))
+    expect_identical(tools::md5sum(predictor_files), original_hashes)
+    expect_length(list.files(file.path(root, p$repID), pattern = "\\.tif$", recursive = TRUE), 0)
+    for (file in files[grepl("\\.csv$", files)]) {
+      table <- data.table::fread(file)
+      expect_true(all(table$rasterPath %in% normalizePath(predictor_files)))
+    }
     registry[[rep]] <- SpaDES.core::outputs(sim)
   }
   combined <- data.table::rbindlist(registry, fill = TRUE)
   p <- summary_parameters("multi")
   multi <- run_summary_sim(root, p, list(outputsDF = combined), label = "postprocess")
   expect_null(multi$mosaicedPredictions)
+  expect_null(multi$summaries)
   output_files <- SpaDES.core::outputs(multi)$file
   annual_file <- output_files[basename(output_files) == "birdAcrossPairSummary.csv"]
   expect_length(annual_file, 1)

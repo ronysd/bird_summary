@@ -1,12 +1,12 @@
 defineModule(sim, list(
   name = "bird_summary",
-  description = paste("Save and register single-bootstrap bird mosaics and pair/year metrics.",
+  description = paste("Save pair/year metrics referencing existing single-bootstrap bird mosaics.",
                       "In standalone multi mode, summarize completed runs and plot replicate",
                       "metric trajectories from registered files or disk."),
   keywords = c("birds", "BAM", "summary"),
   authors = person("Sourav", "Das", role = c("aut", "cre")),
   childModules = character(0),
-  version = list(bird_summary = "0.1.4"),
+  version = list(bird_summary = "0.1.5"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
@@ -46,8 +46,10 @@ defineModule(sim, list(
                     "Caching is disabled by default so saved files are checked and registered on every run.")
   ),
   inputObjects = bindrows(
-    expectsInput("mosaicedPredictions", "list",
-                 "Single mode only: [[species]][[year]] = one-layer SpatRaster in males/km2.", sourceURL = NA),
+    expectsInput("summaries", "list",
+                 paste("Single mode only: bird_modelPredict's [[species]][[year]]$meanPath",
+                       "references an existing single-bootstrap density GeoTIFF in males/km2.",
+                       "Files must remain accessible for multi mode; no raster copies are written."), sourceURL = NA),
     expectsInput("modelIndex", "data.table",
                  "Optional single-mode species selection source from bird_modelLoad.", sourceURL = NA),
     expectsInput("outputsDF", "data.table",
@@ -80,24 +82,19 @@ SaveSingle <- function(sim) {
   config <- birdSummaryConfig(sim)
   year <- as.integer(time(sim))
   if (!year %in% config$years) stop("bird_summary: unexpected save year: ", year)
-  rasters <- birdPairRasters(sim$mosaicedPredictions, config, year)
+  saved <- birdPairRasters(sim$summaries, config, year)
+  rasters <- saved$rasters
   rows <- vector("list", length(rasters))
   for (i in seq_along(rasters)) {
     rows[[i]] <- birdRasterMetrics(rasters[[i]])
     rows[[i]][, `:=`(
       species = config$species[i], year = year, repID = config$repID,
       bootstrapID = config$bootstrapID, scenario = config$scenario,
-      climateScenario = config$climateScenario, studyAreaName = config$studyAreaName
+      climateScenario = config$climateScenario, studyAreaName = config$studyAreaName,
+      rasterPath = saved$paths[i]
     )]
   }
   destination <- birdSummaryDirectory(sim, config, config$repID, paste0("year_", year))
-  for (i in seq_along(rasters)) {
-    file <- file.path(destination, paste0(year, "_", config$species[i], "_mosaic_",
-                                         config$repID, "_boot-", config$bootstrapID, ".tif"))
-    terra::writeRaster(rasters[[i]], file, overwrite = TRUE)
-    rows[[i]][, rasterPath := normalizePath(file, mustWork = TRUE)]
-    sim <- registerOutputs(file, sim)
-  }
   table <- data.table::rbindlist(rows)
   file <- file.path(destination, paste0("birdPairSummary_year", year, "_",
                                        config$repID, "_boot-", config$bootstrapID, ".csv"))

@@ -15,6 +15,69 @@ test_that("file registry is authoritative and its caller-owned table is unchange
                "outputsDF must")
 })
 
+test_that("single mode requires saved files with exact pair identity and uses persisted values", {
+  root <- withr::local_tempdir()
+  config <- summary_env$birdSummaryConfig(list(
+    parameters = list(bird_summary = summary_parameters())
+  ))
+  summaries <- bird_saved_summaries(root)
+  file <- summaries$GCKI[["2020"]]$meanPath
+  saved <- summary_env$birdPairRasters(summaries, config, 2020)
+  expect_identical(saved$paths[1], file)
+  expect_identical(names(saved$rasters$GCKI), "mean")
+  expect_equal(summary_env$birdRasterMetrics(saved$rasters$GCKI),
+               summary_env$birdRasterMetrics(terra::rast(file)))
+  terra::values(summaries$GCKI[["2020"]]$mean) <- 99
+  expect_equal(terra::values(summary_env$birdPairRasters(summaries, config, 2020)$rasters$GCKI),
+               terra::values(terra::rast(file)))
+  expect_error(summary_env$birdPairRasters(NULL, config, 2020), "summaries with saved meanPath")
+  missing <- summaries
+  missing$GCKI[["2020"]] <- NULL
+  expect_error(summary_env$birdPairRasters(missing, config, 2020), "missing saved summary")
+  missing <- summaries
+  missing$GCKI[["2020"]]$meanPath <- file.path(root, "missing.tif")
+  expect_error(summary_env$birdPairRasters(missing, config, 2020), "missing pair raster")
+  wrong <- config
+  wrong$bootstrapID <- 32
+  expect_error(summary_env$birdPairRasters(summaries, wrong, 2020), "filename conflicts")
+  wrong$bootstrapID <- 31
+  wrong$repID <- "rep2"
+  expect_error(summary_env$birdPairRasters(summaries, wrong, 2020), "filename conflicts")
+  raster <- bird_predictions()$GCKI[["2020"]]
+  names(raster) <- "b32_2020"
+  terra::writeRaster(raster, file, overwrite = TRUE)
+  expect_error(summary_env$birdPairRasters(summaries, config, 2020), "layer conflicts")
+  raster <- c(raster, raster)
+  terra::writeRaster(raster, file, overwrite = TRUE)
+  expect_error(summary_env$birdPairRasters(summaries, config, 2020), "layer conflicts")
+})
+
+test_that("the actual predictor writer supplies the saved-file contract", {
+  root <- withr::local_tempdir()
+  predictor_root <- testthat::test_path("..", "..", "..", "bird_modelPredict")
+  skip_if_not(file.exists(file.path(predictor_root, "bird_modelPredict.R")),
+              "Sibling predictor checkout is required for this contract test.")
+  predictor <- new.env(parent = globalenv())
+  code <- parse(file.path(predictor_root, "bird_modelPredict.R"))
+  for (expr in code) {
+    if (is.call(expr) && identical(expr[[1]], as.name("<-")) &&
+        identical(expr[[2]], as.name("SummarizeAndSaveBootstrapStack"))) {
+      eval(expr, predictor)
+    }
+  }
+  sys.source(file.path(predictor_root, "R", "birdPredictionDirectory.R"), predictor)
+  predictor$P <- function(sim) list(repID = "rep1", bootstrapIDs = 31)
+  predictor$outputPath <- function(sim) root
+  entry <- predictor$SummarizeAndSaveBootstrapStack(
+    list(mosaicedPredictions = bird_predictions()), "GCKI", 2020
+  )
+  config <- list(species = "GCKI", repID = "rep1", bootstrapID = 31)
+  saved <- summary_env$birdPairRasters(list(GCKI = list(`2020` = entry)), config, 2020)
+  expect_identical(saved$paths, entry$meanPath)
+  expect_identical(names(saved$rasters$GCKI), "mean")
+  expect_equal(as.vector(terra::values(saved$rasters$GCKI)), c(1, 2, 3, NA))
+})
+
 test_that("spatial support and grids must be comparable across pair-year rasters", {
   root <- withr::local_tempdir()
   predictions <- bird_predictions()

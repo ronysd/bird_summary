@@ -10,17 +10,17 @@ defineModule(sim, list(
   reqdPkgs = list("data.table", "terra"),
   parameters = bindrows(defineParameter(".useCache", "logical", FALSE, NA, NA,
                                         "Disable caching in this fixture.")),
-  inputObjects = bindrows(expectsInput("fixturePredictions", "list",
-                                       "Small supplied prediction rasters.")),
+  inputObjects = bindrows(expectsInput("fixtureSummaries", "list",
+                                       "Small supplied saved prediction summaries.")),
   outputObjects = bindrows(
     createsOutput("modelIndex", "data.table", "Species codes published during init."),
-    createsOutput("mosaicedPredictions", "list", "Small species/year rasters.")
+    createsOutput("summaries", "list", "Species/year entries with existing meanPath TIFFs.")
   )
 ))
 
 doEvent.birdSummaryProvider <- function(sim, eventTime, eventType) {
   if (eventType != "init") stop("Unexpected fixture event.")
-  sim$modelIndex <- data.table::data.table(species = names(sim$fixturePredictions))
-  sim$mosaicedPredictions <- sim$fixturePredictions
+  sim$modelIndex <- data.table::data.table(species = names(sim$fixtureSummaries))
+  sim$summaries <- sim$fixtureSummaries
   invisible(sim)
 }

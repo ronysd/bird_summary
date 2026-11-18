@@ -32,22 +32,33 @@ its `init` event. A missing index still stops the save rather than silently
 omitting species. Saving occurs at each selected year at last event
 priority, after predictions; no other module's events are scheduled.
 
-Single mode validates one-layer `bBOOT_YEAR` mosaics for every requested species,
-writes a durable copy and a pair/year CSV, and registers both with
-`SpaDES.core::registerOutputs()`. No permanent summary table is added to the sim.
+Single mode reads the existing GeoTIFF referenced by
+`sim$summaries[[species]][[year]]$meanPath` for every requested species. It
+validates the single-bootstrap filename and layer, calculates metrics from the
+saved raster, and writes/registers only a pair/year CSV with
+`SpaDES.core::registerOutputs()`. It does not write or copy TIFFs. The predictor
+already registers its own raster files. No permanent summary table is added to
+the sim. An alternative provider must supply the same saved-file contract.
 
 Outputs are under:
 
 ```text
 outputPath/bird_summary/SCENARIO/CLIMATE/STUDY/rep1/year_2020/
-  2020_GCKI_mosaic_rep1_boot-31.tif
   birdPairSummary_year2020_rep1_boot-31.csv
 ```
 
 Each CSV is also a manifest: species, year, replicate, bootstrap, scenario,
 climate, reporting-area label, units, metrics, and absolute `rasterPath`.
-Rerunning the same identity overwrites its products; different scenarios,
+`rasterPath` points to the predictor's existing file, which must remain
+accessible and unchanged for multi mode. Predictor paths do not include the
+summary's scenario/climate/area labels: use separate predictor output roots
+for runs that would otherwise overwrite the same replicate/year/species/bootstrap.
+Missing or mismatched files stop the save; there is no duplicate-write fallback.
+Rerunning the same identity overwrites its CSV; different scenarios,
 climates, areas, replicates and years have separate directories.
+Older CSVs referencing summary-owned TIFF snapshots remain supported. Existing
+snapshots are not deleted or rewritten automatically; retain any TIFFs still
+referenced by CSVs.
 
 ## Multi mode: standalone postprocessing
 
@@ -66,7 +77,7 @@ params <- list(
 )
 ```
 
-Multi mode needs no dummy `mosaicedPredictions`, models, downloads, or saved
+Multi mode needs no dummy `summaries`, models, downloads, or saved
 simLists. Pass `outputsDF` as a combined `data.table::rbindlist()` of the
 completed runs' `SpaDES.core::outputs(sim)` records if available. Registration
 does **not** combine simulations automatically, so providing `objects =
