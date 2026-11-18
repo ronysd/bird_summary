@@ -73,13 +73,49 @@ birdAcrossPairMetrics <- function(pairs) {
   annual
 }
 
+#' Calculate sample min-max bounds from exact FireSense reference snapshots
+#' @param pairs Validated complete pair/year metrics table.
+#' @param config Validated multi-mode selection.
+#' @return Per-species/metric bounds, units, context and reference sample counts.
+#' @keywords internal
+birdNRVBounds <- function(pairs, config) {
+  reference_years <- c(2720L, 2820L, 2920L, 3020L)
+  selected <- pairs$year %in% reference_years
+  reference <- pairs[selected, ]
+  expected <- data.table::CJ(species = config$species, year = reference_years, repID = config$reps)
+  if (anyDuplicated(reference, by = c("species", "year", "repID")) ||
+      nrow(reference) != nrow(expected) ||
+      nrow(expected[!reference, on = .(species, year, repID)])) {
+    stop("bird_summary: NRV requires one record for every species/reference year/selected replicate.")
+  }
+  long <- data.table::melt(
+    reference, id.vars = c("species", "year", "repID", "scenario", "climateScenario", "studyAreaName"),
+    measure.vars = c("meanDensity", "medianDensity", "totalAbundance"),
+    variable.name = "metric", value.name = "value"
+  )
+  if (anyNA(long$value) || any(!is.finite(long$value)) || any(long$value < 0)) {
+    stop("bird_summary: NRV reference metrics must be finite, nonmissing and nonnegative.")
+  }
+  bounds <- long[, .(lower = min(value), upper = max(value), nObservations = .N,
+                     nPairs = data.table::uniqueN(repID), nYears = data.table::uniqueN(year)),
+                 by = .(species, scenario, climateScenario, studyAreaName, metric)]
+  bounds[, `:=`(
+    referenceYears = paste(reference_years, collapse = ";"),
+    method = "sample_min_max",
+    units = data.table::fifelse(metric == "totalAbundance", "males", "males/km2")
+  )]
+  data.table::setorder(bounds, species, metric)
+  bounds
+}
+
 #' Plot replicate metric trajectories for each species
 #' @param pairs Validated pair/year metrics table.
 #' @param destination Existing directory for multi-mode outputs.
 #' @param metric One supported metric name.
+#' @param bounds Optional per-species/metric table from birdNRVBounds.
 #' @return Character vector of saved PNG paths.
 #' @keywords internal
-birdPlotAcrossReplicateMetrics <- function(pairs, destination, metric) {
+birdPlotAcrossReplicateMetrics <- function(pairs, destination, metric, bounds = NULL) {
   label <- switch(metric,
     meanDensity = list(stem = "Density", title = "area-weighted mean density",
                        axis = expression("Area-weighted mean density (males/" * km^2 * ")")),
@@ -98,22 +134,41 @@ birdPlotAcrossReplicateMetrics <- function(pairs, destination, metric) {
     years <- sort(unique(species_pairs$year))
     replicates <- sort(unique(species_pairs$repID))
     data.table::setorder(species_pairs, repID, year)
-    annual_mean <- species_pairs[, .(value = mean(get(metric))), by = year]
+    annual_median <- species_pairs[, .(value = stats::median(get(metric))), by = year]
+    species_bounds <- NULL
+    if (!is.null(bounds)) {
+      selected_bounds <- bounds$species == selected_species & bounds$metric == metric
+      species_bounds <- bounds[selected_bounds, ]
+      if (nrow(species_bounds) != 1L || anyNA(species_bounds[, .(lower, upper)]) ||
+          any(!is.finite(c(species_bounds$lower, species_bounds$upper))) ||
+          species_bounds$lower < 0 || species_bounds$lower > species_bounds$upper) {
+        stop("bird_summary: missing or invalid NRV plot bounds for ", selected_species, "/", metric)
+      }
+    }
     file <- file.path(destination, paste0("birdAcrossReplicate", label$stem, "_",
                                          selected_species, ".png"))
-    grDevices::png(filename = file, width = 1200, height = 800, res = 120)
+    grDevices::png(filename = file, width = 1200, height = 950, res = 120)
     device <- grDevices::dev.cur()
     on.exit(if (grDevices::dev.cur() == device) grDevices::dev.off(), add = TRUE)
+    graphics::layout(matrix(1:2, ncol = 1), heights = c(1, 0.20))
     graphics::par(mar = c(5.1, 6.1, 4.1, 2.1))
 
     x_limits <- range(years)
     if (x_limits[1] == x_limits[2]) x_limits <- x_limits + c(-1, 1)
     max_value <- max(species_pairs[[metric]])
+    if (!is.null(species_bounds)) max_value <- max(max_value, species_bounds$upper)
     y_limits <- c(0, if (max_value > 0) max_value * 1.08 else 1)
     graphics::plot.default(NA, xlim = x_limits, ylim = y_limits, xlab = "Simulation year",
                    ylab = label$axis,
                    main = paste(selected_species, "-", label$title),
                    xaxt = "n")
+    reference_limits <- c(max(2720, x_limits[1]), min(3020, x_limits[2]))
+    show_reference <- reference_limits[1] < reference_limits[2]
+    reference_colour <- "#EEE9D5"
+    if (show_reference) {
+      graphics::rect(reference_limits[1], y_limits[1], reference_limits[2], y_limits[2],
+                     col = reference_colour, border = NA)
+    }
     ticks <- if (length(years) < 8L) years else pretty(years, n = 7)
     ticks <- ticks[ticks >= min(years) & ticks <= max(years)]
     if (!length(ticks)) ticks <- years
@@ -126,14 +181,47 @@ birdPlotAcrossReplicateMetrics <- function(pairs, destination, metric) {
       graphics::points(replicate_pairs$year, replicate_pairs[[metric]],
                        col = "grey45", pch = 16)
     }
-    graphics::lines(annual_mean$year, annual_mean$value, col = "#1F4E79", lwd = 3)
-    graphics::points(annual_mean$year, annual_mean$value,
+    graphics::lines(annual_median$year, annual_median$value, col = "#1F4E79", lwd = 3)
+    graphics::points(annual_median$year, annual_median$value,
                      col = "#1F4E79", pch = 18, cex = 1.2)
-    graphics::legend("topleft", legend = c("Individual replicate", "Across-replicate mean"),
-                     col = c("grey55", "#1F4E79"), lty = 1, lwd = c(1, 3),
-                     pch = c(16, 18), bty = "n")
-    graphics::mtext("Descriptive replicate comparison; not an NRV range",
+    if (!is.null(species_bounds)) {
+      graphics::abline(h = c(species_bounds$lower, species_bounds$upper),
+                       col = "#9A4B25", lty = 2, lwd = 2)
+    }
+    legend_labels <- c("Individual replicate", "Across-replicate median")
+    legend_colours <- c("grey55", "#1F4E79")
+    legend_lines <- c(1, 1)
+    legend_widths <- c(1, 3)
+    legend_points <- c(16, 18)
+    legend_fills <- c(NA, NA)
+    if (show_reference) {
+      legend_labels <- c(legend_labels, "FireSense NRV reference years")
+      legend_colours <- c(legend_colours, "#B5AA7A")
+      legend_lines <- c(legend_lines, NA)
+      legend_widths <- c(legend_widths, NA)
+      legend_points <- c(legend_points, 22)
+      legend_fills <- c(legend_fills, reference_colour)
+    }
+    if (!is.null(species_bounds)) {
+      legend_labels <- c(legend_labels, "NRV sample min-max bounds")
+      legend_colours <- c(legend_colours, "#9A4B25")
+      legend_lines <- c(legend_lines, 2)
+      legend_widths <- c(legend_widths, 2)
+      legend_points <- c(legend_points, NA)
+      legend_fills <- c(legend_fills, NA)
+    }
+    subtitle <- if (is.null(species_bounds)) "Descriptive replicate comparison; not an NRV range" else
+      paste0("NRV sample envelope: ", species_bounds$nPairs, " replicates, ",
+             species_bounds$nObservations, " observations; not confidence limits")
+    graphics::mtext(subtitle,
                     side = 3, line = 0.2, adj = 1, cex = 0.8, col = "grey35")
+    graphics::par(mar = c(0, 6.1, 0, 2.1))
+    graphics::plot.new()
+    graphics::plot.window(xlim = c(0, 1), ylim = c(0, 1))
+    graphics::legend("center", legend = legend_labels,
+                     col = legend_colours, lty = legend_lines, lwd = legend_widths,
+                     pch = legend_points, pt.bg = legend_fills,
+                     ncol = 2, cex = 0.85, bty = "n")
     grDevices::dev.off()
     files[i] <- normalizePath(file, mustWork = TRUE)
   }

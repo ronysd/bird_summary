@@ -11,6 +11,13 @@ birdSummaryConfig <- function(sim, resolveSpecies = TRUE) {
     stop("bird_summary: mode must be single or multi.")
   }
   config <- list(mode = p$mode)
+  if (!is.logical(p$calculateNRV) || length(p$calculateNRV) != 1L || is.na(p$calculateNRV)) {
+    stop("bird_summary: calculateNRV must be TRUE or FALSE.")
+  }
+  config$calculateNRV <- p$calculateNRV
+  if (config$calculateNRV && p$mode != "multi") {
+    stop("bird_summary: calculateNRV is supported only in multi mode.")
+  }
   metrics <- p$plotMetrics
   if (!is.character(metrics) || anyNA(metrics) || anyDuplicated(metrics) ||
       any(!metrics %in% c("meanDensity", "totalAbundance", "medianDensity"))) {
@@ -43,6 +50,9 @@ birdSummaryConfig <- function(sim, resolveSpecies = TRUE) {
     stop("bird_summary: years must be explicit, unique four-digit simulation years.")
   }
   config$years <- sort(as.integer(years))
+  if (config$calculateNRV && !all(c(2720L, 2820L, 2920L, 3020L) %in% config$years)) {
+    stop("bird_summary: calculateNRV requires years to include 2720, 2820, 2920, 3020.")
+  }
   if (p$mode == "single" && any(config$years < start(sim) | config$years > end(sim))) {
     stop("bird_summary: save years must lie inside the simulation calendar.")
   }

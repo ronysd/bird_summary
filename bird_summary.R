@@ -6,7 +6,7 @@ defineModule(sim, list(
   keywords = c("birds", "BAM", "summary"),
   authors = person("Sourav", "Das", role = c("aut", "cre")),
   childModules = character(0),
-  version = list(bird_summary = "0.1.5"),
+  version = list(bird_summary = "0.1.9"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
@@ -31,7 +31,13 @@ defineModule(sim, list(
                     paste("Multi-mode metrics to plot per species: meanDensity (area-weighted males/km2),",
                           "totalAbundance (predicted males), medianDensity (unweighted pixel males/km2).",
                           "Default plots all three; character(0) disables plots. CSV metrics are unchanged.",
-                          "These descriptive metrics do not define NRV reference bounds.")),
+                          "Plots shade 2720-3020 as FireSense NRV reference years where visible.",
+                          "NRV bound lines appear only when calculateNRV is TRUE.")),
+    defineParameter("calculateNRV", "logical", FALSE, NA, NA,
+                    paste("Multi mode only: calculate sample min-max NRV bounds for all three metrics",
+                          "from exactly 2720, 2820, 2920, 3020 across every selected replicate.",
+                          "All four years must be selected and complete. Saves bounds and adds plot lines.",
+                          "FALSE retains descriptive summaries only; no confidence limits are calculated.")),
     defineParameter("repID", "character", NA_character_, NA, NA,
                     "Single-mode replicate label, e.g. rep1; NA uses bird_modelPredict's repID."),
     defineParameter("bootstrapID", "numeric", NA_real_, NA, NA,
@@ -110,7 +116,13 @@ InitMulti <- function(sim) {
   pairs <- birdReadPairTables(files, config)
   birdValidatePairRasters(pairs)
   annual <- birdAcrossPairMetrics(pairs)
+  bounds <- if (config$calculateNRV) birdNRVBounds(pairs, config) else NULL
   destination <- birdSummaryDirectory(sim, config, "multi")
+  if (!is.null(bounds)) {
+    file <- file.path(destination, "birdNRVBounds.csv")
+    data.table::fwrite(bounds, file)
+    sim <- registerOutputs(file, sim)
+  }
   file <- file.path(destination, "birdAcrossPairSummary.csv")
   data.table::fwrite(annual, file)
   sim <- registerOutputs(file, sim)
@@ -118,10 +130,12 @@ InitMulti <- function(sim) {
   data.table::fwrite(pairs, file)
   sim <- registerOutputs(file, sim)
   for (metric in config$plotMetrics) {
-    plot_files <- birdPlotAcrossReplicateMetrics(pairs, destination, metric)
+    plot_files <- birdPlotAcrossReplicateMetrics(pairs, destination, metric, bounds)
     for (file in plot_files) sim <- registerOutputs(file, sim)
   }
-  message("bird_summary: combined ", length(config$reps), " replicates; NRV is not calculated.")
+  message("bird_summary: combined ", length(config$reps), " replicates; ",
+          if (config$calculateNRV) "sample min-max NRV bounds calculated from four reference years."
+          else "NRV is not calculated.")
   return(invisible(sim))
 }
 

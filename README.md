@@ -109,17 +109,70 @@ The multi-mode `plotMetrics` parameter defaults to
 `c("meanDensity", "totalAbundance", "medianDensity")`. Supply a subset to select
 plots, or `character(0)` to disable them. All CSV metrics are still calculated.
 Each plot title contains the species code and metric. Grey trajectories show
-individual replicates; the blue trajectory shows their annual mean.
+individual replicates; the blue trajectory shows their annual median for each
+year across the selected replicates.
+Legends occupy a separate panel below the axes, outside the curve area.
+PNG dimensions are 1200 by 950 pixels.
+All three plot types shade the visible portion of simulation years 2720-3020
+in pale beige, labelled "FireSense NRV reference years" in the legend. Plots
+outside that period have no shading or reference legend entry. This identifies
+the FireSense reference period visually only: it does not filter records,
+change summary statistics, or calculate NRV bounds.
 Only plots from the current selection are registered; old plots from earlier
 selections are not deleted.
 
-These are descriptive response metrics, not NRV bounds. Mean density is useful
+The annual summaries are descriptive response metrics, not NRV bounds. Mean density is useful
 for density comparisons, and abundance for reporting total predicted males
 within the reporting area. With identical reporting area/support, total abundance
 and mean density are proportional, so they are not independent indices.
 Median pixel density describes the typical pixel but does not integrate to total
-abundance. None of these choices establishes the reference period, burn-in,
-temporal weighting or range required for an NRV calculation.
+abundance.
+
+## Optional FireSense-style NRV sample bounds
+
+Enable this only in standalone multi mode, for a scenario you intend to use
+as a natural reference:
+
+```r
+bird_summary = list(
+  mode = "multi",
+  # Retain your paths, species, scenario, climateScenario and .studyAreaName.
+  reps = 1L:5L,
+  years = seq(2020L, 3020L, 100L),
+  calculateNRV = TRUE
+)
+```
+
+The default `calculateNRV = FALSE` retains descriptive summaries. When enabled,
+all four exact years **2720, 2820, 2920, 3020** must be included in `years` and
+have one record for every selected species and replicate. Other years remain
+in the trajectories and annual CSVs but do not contribute to these bounds.
+Missing snapshots stop the run instead of yielding a partial reference sample.
+
+For each species and each of mean density, median pixel density and total
+abundance, calculate the minimum and maximum across the individual
+replicate/year values, **without averaging replicates first**. Five selected
+replicates give 20 observations per species/metric. Fewer or more replicates
+are supported: the sample always contains four observations per selected
+replicate.
+
+The module writes/registers `birdNRVBounds.csv` even when plots are disabled.
+It contains `lower`, `upper`, `nObservations`, `nPairs`, `nYears`,
+`referenceYears`, `method = "sample_min_max"`, units, species and the selected
+scenario/climate/area labels. The existing combined pair CSV retains the
+underlying records and their raster/source paths. Selected plots add dashed
+bound lines across the trajectory and report replicate/observation counts;
+the pale reference-year band remains. Annual statistics and rasters are unchanged.
+
+This is the user-selected FireSense-style **sample envelope**, not a verified
+reimplementation of the FireSense report, a confidence interval, or guaranteed
+ecological limits. Extreme observations and sample size affect min-max bounds.
+Snapshots may be temporally correlated, and paired BAM bootstraps combine
+landscape variation with model uncertainty. Climate trends may shift the
+reference distribution. Enabling this option does not establish that the selected
+scenario represents natural conditions. No current-status classification or
+spatial NRV map is calculated. Old bounds files are not deleted when the option
+is later disabled; only products from the current run are registered.
 
 ## Scientific meaning and limits
 
@@ -135,10 +188,10 @@ A future males/ha conversion divides density by 100; integrating in hectares
 must preserve total predicted males. No unit-conversion parameter is included.
 
 Across-pair statistics describe the paired landscape/model predictions, not
-separate landscape and model uncertainties. Years remain separate. **NRV is not
-calculated**: reference scenario, period, burn-in, temporal weighting and bounds
-must be explicitly agreed before adding reference distributions. Metadata alone
-does not establish an NRV policy. SD, quantiles, temporal changes, spatial
+separate landscape and model uncertainties. Years remain separate in annual
+summaries; the optional sample envelope pools only the four specified reference
+snapshots. Metadata alone does not establish scientific validity.
+SD, quantiles, temporal changes, spatial
 summary maps, and current-status-versus-NRV comparisons are outside this version.
 The year 2020 is not treated as an NRV reference by default.
 

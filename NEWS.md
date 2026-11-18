@@ -1,3 +1,35 @@
+# bird_summary 0.1.9 (18 November 2026)
+
+- Plot the across-replicate median trajectory instead of the mean. Individual
+  replicate lines and saved CSV statistics are unchanged.
+
+# bird_summary 0.1.8 (9 November 2026)
+
+- Move metric-plot legends into a separate panel below the axes so text cannot
+  cover replicate curves or NRV bound lines. Increase PNG height to retain
+  space for the data panel; calculations and filenames are unchanged.
+- Test nonoverlapping data/legend panels with and without NRV bounds
+  (MP-M4/MP-L1 reporting follow-up).
+
+# bird_summary 0.1.7 (6 November 2026)
+
+- Add opt-in `calculateNRV` in multi mode: sample minimum and maximum for each
+  species and metric across individual snapshots at 2720, 2820, 2920 and 3020.
+  Use all selected replicates, require complete snapshots, and report counts.
+- Save/register `birdNRVBounds.csv` and show bound lines and sample counts on
+  selected plots. Default descriptive mode and annual CSV metrics are unchanged.
+- Follow the user-selected FireSense-style sample envelope, not confidence
+  limits or percentile bounds; add focused regression coverage and documentation
+  (MP-M4/MP-L1 reporting follow-up, no predictor changes).
+
+# bird_summary 0.1.6 (6 November 2026)
+
+- Shade 2720-3020 in all multi-mode metric plots and label the visible band
+  "FireSense NRV reference years". CSVs and statistics are unchanged; this is
+  a visual reference-period annotation, not an NRV range calculation.
+- Add plot regression coverage for the annotation (MP-M4/MP-L1 reporting
+  follow-up; no predictor changes).
+
 # bird_summary 0.1.5 (5 November 2026)
 
 - Single mode now references the predictor's existing `summaries` meanPath TIFFs

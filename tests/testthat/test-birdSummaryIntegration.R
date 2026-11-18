@@ -108,3 +108,46 @@ test_that("single and standalone multi modes communicate through saved registere
   terra::writeRaster(raster, pairs$rasterPath[1], overwrite = TRUE)
   expect_error(summary_env$birdValidatePairRasters(pairs), "persisted metrics|reporting support")
 })
+
+test_that("multi NRV bounds are persisted and registered with or without plots", {
+  local_summary_runtime()
+  root <- withr::local_tempdir()
+  reference_years <- c(2720L, 2820L, 2920L, 3020L)
+  times <- list(start = 2720, end = 3020)
+  registry <- list()
+  for (rep in 1:2) {
+    p <- summary_parameters(rep = paste0("rep", rep), boot = 30 + rep)
+    p$years <- reference_years
+    summaries <- bird_saved_summaries(root, bird_predictions(30 + rep, rep - 1, reference_years),
+                                      p$repID, 30 + rep)
+    sim <- run_summary_sim(root, p, list(summaries = summaries), times = times)
+    registry[[rep]] <- SpaDES.core::outputs(sim)
+  }
+  combined <- data.table::rbindlist(registry, fill = TRUE)
+  p <- summary_parameters("multi")
+  p$years <- reference_years
+  p$calculateNRV <- TRUE
+  p$plotMetrics <- "meanDensity"
+  multi <- run_summary_sim(root, p, list(outputsDF = combined), label = "nrv", times = times)
+  files <- SpaDES.core::outputs(multi)$file
+  expect_length(files[basename(files) == "birdNRVBounds.csv"], 1)
+  bounds <- data.table::fread(files[basename(files) == "birdNRVBounds.csv"])
+  expect_equal(nrow(bounds), 6)
+  expect_true(all(bounds$nPairs == 2 & bounds$nObservations == 8 & bounds$nYears == 4))
+  expect_equal(bounds[metric == "medianDensity"]$lower, c(702, 702))
+  expect_equal(bounds[metric == "medianDensity"]$upper, c(1003, 1003))
+  expect_length(files[grepl("\\.png$", files)], 2)
+  p$plotMetrics <- character(0)
+  no_plots <- run_summary_sim(root, p, list(outputsDF = combined), label = "nrv-no-plots", times = times)
+  no_plot_files <- SpaDES.core::outputs(no_plots)$file
+  expect_length(no_plot_files[basename(no_plot_files) == "birdNRVBounds.csv"], 1)
+  expect_false(any(grepl("\\.png$", no_plot_files)))
+  p$calculateNRV <- FALSE
+  disabled <- run_summary_sim(root, p, list(outputsDF = combined), label = "nrv-disabled", times = times)
+  expect_false(any(basename(SpaDES.core::outputs(disabled)$file) == "birdNRVBounds.csv"))
+  expect_equal(
+    data.table::fread(files[basename(files) == "birdAcrossPairSummary.csv"]),
+    data.table::fread(SpaDES.core::outputs(disabled)$file[
+      basename(SpaDES.core::outputs(disabled)$file) == "birdAcrossPairSummary.csv"])
+  )
+})

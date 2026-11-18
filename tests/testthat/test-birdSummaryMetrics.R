@@ -78,3 +78,55 @@ test_that("only omitted single-mode species are deferred during initialization",
   sim$parameters$bird_summary$species <- character(0)
   expect_error(summary_env$.inputObjects(sim), "species must be explicit")
 })
+
+test_that("NRV bounds pool individual reference snapshots, not annual means or other years", {
+  pairs <- data.table::CJ(species = c("GCKI", "RCKI"), year = c(2020L, 2720L, 2820L, 2920L, 3020L),
+                          repID = paste0("rep", 1:5))
+  pairs[, `:=`(scenario = "reference", climateScenario = "forcing", studyAreaName = "fixture")]
+  pairs[, meanDensity := as.numeric(sub("rep", "", repID)) + (year - 2720) / 100 +
+          ifelse(species == "RCKI", 100, 0)]
+  pairs[year == 2020, meanDensity := 10000]
+  pairs[, `:=`(medianDensity = meanDensity / 2, totalAbundance = meanDensity * 10)]
+  original <- data.table::copy(pairs)
+  config <- list(species = c("GCKI", "RCKI"), reps = paste0("rep", 1:5))
+  bounds <- summary_env$birdNRVBounds(pairs, config)
+  expect_equal(nrow(bounds), 6)
+  expect_true(all(bounds$nObservations == 20 & bounds$nPairs == 5 & bounds$nYears == 4))
+  expect_true(all(bounds$referenceYears == "2720;2820;2920;3020"))
+  expect_true(all(bounds$method == "sample_min_max"))
+  density <- bounds[metric == "meanDensity"]
+  expect_equal(density$lower, c(1, 101))
+  expect_equal(density$upper, c(8, 108))
+  expect_true(all(density$units == "males/km2"))
+  abundance <- bounds[metric == "totalAbundance"]
+  expect_equal(abundance$lower, c(10, 1010))
+  expect_equal(abundance$upper, c(80, 1080))
+  expect_true(all(abundance$units == "males"))
+  expect_equal(bounds[metric == "medianDensity"]$upper, c(4, 54))
+  expect_equal(pairs, original)
+
+  config$reps <- c("rep1", "rep2")
+  preliminary <- pairs[repID %in% config$reps]
+  two <- summary_env$birdNRVBounds(preliminary, config)
+  expect_true(all(two$nObservations == 8 & two$nPairs == 2))
+  expect_equal(two[metric == "meanDensity"]$upper, c(5, 105))
+  expect_error(summary_env$birdNRVBounds(preliminary[-6], config), "every species/reference year")
+  expect_error(summary_env$birdNRVBounds(data.table::rbindlist(list(preliminary, preliminary[6])), config),
+               "every species/reference year")
+})
+
+test_that("NRV calculation is explicit, multi-only and requires all exact reference years", {
+  p <- summary_parameters("multi")
+  p$calculateNRV <- TRUE
+  sim <- list(parameters = list(bird_summary = p))
+  expect_error(summary_env$birdSummaryConfig(sim), "requires years")
+  p$years <- c(2720L, 2820L, 2920L, 3020L)
+  sim$parameters$bird_summary <- p
+  expect_true(summary_env$birdSummaryConfig(sim)$calculateNRV)
+  sim$parameters$bird_summary$mode <- "single"
+  expect_error(summary_env$birdSummaryConfig(sim), "only in multi")
+  for (value in list(NA, 1, c(TRUE, FALSE), NULL)) {
+    sim$parameters$bird_summary["calculateNRV"] <- list(value)
+    expect_error(summary_env$birdSummaryConfig(sim), "must be TRUE or FALSE")
+  }
+})

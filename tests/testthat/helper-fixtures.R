@@ -9,18 +9,18 @@ summary_env$start <- function(sim) 2020
 summary_env$end <- function(sim) 2021
 
 summary_parameters <- function(mode = "single", rep = "rep1", boot = 31) {
-  list(mode = mode, reps = 1L:2L, years = 2020L:2021L,
+  list(mode = mode, reps = 1L:2L, years = 2020L:2021L, calculateNRV = FALSE,
        plotMetrics = c("meanDensity", "totalAbundance", "medianDensity"),
        species = c("GCKI", "RCKI"), repID = rep, bootstrapID = boot,
        scenario = "reference", climateScenario = "CanESM5_SSP370",
        .studyAreaName = "fixture")
 }
 
-bird_predictions <- function(boot = 31, offset = 0) {
+bird_predictions <- function(boot = 31, offset = 0, years = 2020:2021) {
   predictions <- list()
   for (species in c("GCKI", "RCKI")) {
     predictions[[species]] <- list()
-    for (year in 2020:2021) {
+    for (year in years) {
       raster <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2000,
                             ymin = 0, ymax = 2000, crs = "EPSG:3857")
       terra::values(raster) <- c(1, 2, 3, NA) + offset + (year - 2020)
@@ -59,10 +59,11 @@ local_summary_runtime <- function(envir = parent.frame()) {
   )
 }
 
-run_summary_sim <- function(root, p, objects = list(), label = p$repID) {
+run_summary_sim <- function(root, p, objects = list(), label = p$repID,
+                            times = list(start = 2020, end = 2021)) {
   p$simOutputPath <- root
   sim <- SpaDES.core::simInit(
-    times = list(start = 2020, end = 2021),
+    times = times,
     params = list(bird_summary = p, .globals = list(verbose = FALSE)),
     modules = "bird_summary", objects = objects,
     paths = list(modulePath = testthat::test_path("..", "..", ".."),
