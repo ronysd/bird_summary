@@ -89,7 +89,33 @@ test_that("single and standalone multi modes communicate through saved registere
   p$plotMetrics <- character(0)
   no_plots <- run_summary_sim(root, p, list(outputsDF = combined), label = "no-plots")
   expect_false(any(grepl("\\.png$", SpaDES.core::outputs(no_plots)$file)))
+  unmasked_file <- SpaDES.core::outputs(no_plots)$file[
+    basename(SpaDES.core::outputs(no_plots)$file) == "birdAcrossPairSummary.csv"]
+  unmasked_hash <- tools::md5sum(unmasked_file)
+  manifest <- data.table::data.table(
+    species = p$species, year = 2020L,
+    rasterPath = file.path(root, paste0(p$species, "_BAM_2020.tif")),
+    modelVersion = "v5", densityUnits = "males/ha",
+    sourceURL = "https://example.org/verified-fixture",
+    nBootstraps = 32L, ensembleStatistic = "mean"
+  )
+  bam <- terra::rast(summaries$GCKI[["2020"]]$meanPath)
+  terra::values(bam) <- c(0, 0.1, NA, 99)
+  for (file in manifest$rasterPath) terra::writeRaster(bam, file)
+  p$currentCondition <- "both"
+  masked <- run_summary_sim(root, p, list(outputsDF = combined, bamBenchmarkFiles = manifest),
+                             label = "bam-enabled")
+  masked_files <- SpaDES.core::outputs(masked)$file
+  expect_true(all(grepl("/multi/bam_supported/", masked_files)))
+  masked_annual <- data.table::fread(masked_files[basename(masked_files) == "birdAcrossPairSummary.csv"])
+  expect_true(all(masked_annual$nValidCells == 2))
+  expect_true(all(masked_annual$reportingSupport == "bam_2020_valid"))
+  expect_true(all(file.exists(masked_annual$reportingMaskPath)))
+  expect_equal(masked_annual[metric == "meanDensity" & year == 2020]$mean,
+               c(2, 2), tolerance = 0.01)
+  expect_identical(tools::md5sum(unmasked_file), unmasked_hash)
 
+  p$currentCondition <- "SIM"
   config <- summary_env$birdSummaryConfig(list(parameters = list(bird_summary = p)))
   tables <- combined$file[grepl("\\.csv$", combined$file)]
   pairs <- summary_env$birdReadPairTables(tables, config)
@@ -150,4 +176,31 @@ test_that("multi NRV bounds are persisted and registered with or without plots",
     data.table::fread(SpaDES.core::outputs(disabled)$file[
       basename(SpaDES.core::outputs(disabled)$file) == "birdAcrossPairSummary.csv"])
   )
+})
+
+test_that("multi mode registers the new whisker plot alongside existing plots", {
+  local_summary_runtime()
+  root <- withr::local_tempdir()
+  years <- c(2020L, 2720L, 2820L, 2920L, 3020L)
+  times <- list(start = 2020, end = 3020)
+  registry <- list()
+  for (rep in 1:2) {
+    p <- summary_parameters(rep = paste0("rep", rep), boot = 30 + rep)
+    p$years <- years
+    summaries <- bird_saved_summaries(root, bird_predictions(30 + rep, rep - 1, years),
+                                      p$repID, 30 + rep)
+    sim <- run_summary_sim(root, p, list(summaries = summaries), times = times)
+    registry[[rep]] <- SpaDES.core::outputs(sim)
+  }
+  p <- summary_parameters("multi")
+  p$years <- years
+  p$calculateNRV <- TRUE
+  p$plotMetrics <- "meanDensity"
+  multi <- run_summary_sim(root, p, list(outputsDF = data.table::rbindlist(registry)),
+                           label = "whiskers", times = times)
+  files <- SpaDES.core::outputs(multi)$file
+  expect_true(any(basename(files) == "birdCurrentNRVWhiskers_SIM_page01.png"))
+  expect_length(grep("birdCurrentSIMNRVDensity_", files), 2)
+  expect_length(grep("birdAcrossReplicateDensity_", files), 2)
+  expect_true(all(file.exists(files)))
 })

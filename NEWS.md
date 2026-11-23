@@ -1,3 +1,55 @@
+# bird_summary 0.1.15
+
+- Add multi-species median and sample min-max whisker plots in males/km2
+  alongside existing NRV comparison and trajectory plots.
+- Preserve NRV bounds when simulated 2020 is not selected.
+
+# bird_summary 0.1.14
+
+- Multi-mode current condition can use BAM (default), SIM, or both. Missing
+  official BAM products are downloaded once to the configured input directory;
+  supplied manifests remain supported.
+- Current-versus-NRV plots show replicate ranges and descriptive NRV percentile
+  intervals rather than labelling them as confidence intervals.
+
+# bird_summary 0.1.13 (19 November 2026)
+
+- Report all densities in males/ha, matching BAM. Integrate with cell areas in
+  hectares; abundance remains predicted males. Verify and migrate both legacy
+  records and previously normalized males/km2 records without double scaling.
+- Only when an official BAM benchmark is supplied, use one fixed per-species
+  BAM-2020 valid-data mask for the benchmark and all simulated years/replicates.
+  Keep valid zeros. Align validity by nearest neighbour separately from
+  bilinear density interpolation; fail on missing values within the fixed mask.
+- Recalculate masked metrics from existing rasters. Save mask rasters and
+  provenance under multi/bam_supported, separate from full-support summaries.
+  Source rasters and simulations are unchanged. Add reporting regression
+  coverage and documentation (MP-M4/MP-L1 reporting follow-up).
+
+# bird_summary 0.1.12 (19 November 2026)
+
+- Correct the unmodified V5 raw response interpretation to males/ha; normalize
+  reported densities to males/km2 before area integration. Add explicit
+  predictionDensityUnits and record sourceDensityUnits. Regenerate verified
+  legacy metrics from existing rasters without changing rasters or original
+  pair CSVs; V5 density/abundance values increase by 100.
+- Add optional local official-BAM-2020 benchmark manifests, normalized metrics
+  and a distinct trajectory baseline. Log bilinear alignment and require full
+  existing simulation reporting coverage; no automatic acquisition or masking
+  changes to simulations (MP-M4/MP-L1 reporting follow-up).
+- Add simulated-2020/BAM-2020/NRV comparison plots when complete reference years
+  and NRV calculation are enabled. Label sample ranges and the official
+  bootstrap-mean surface distinctly; do not infer landscape confidence limits
+  from pixel uncertainty. Record public-product postprocessing in provenance.
+
+# bird_summary 0.1.11 (18 November 2026)
+
+- Add a red dashed current-condition line at each species/metric's median
+  across selected replicates at 2020, when that year is selected. Existing CSVs
+  retain individual baseline values and their median; predictions are unchanged.
+- Use equally spaced Y-axis ticks with matching horizontal gridlines and
+  species/metric-specific scales (MP-M4/MP-L1 reporting follow-up).
+
 # bird_summary 0.1.10 (18 November 2026)
 
 - Remove point markers from replicate and median trajectories and add vertical

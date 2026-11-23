@@ -185,9 +185,9 @@ test_that("FireSense reference shading uses exact visible years in every metric 
     expect_equal(bands[[i]][3], 0)
     expect_identical(tail(labels[[i]], 1), "FireSense NRV reference years")
   }
-  expect_equal(bands[[1]][4], 8 * 1.08)
-  expect_equal(bands[[2]][4], 800 * 1.08)
-  expect_equal(bands[[3]][4], 4 * 1.08)
+  expect_equal(bands[[1]][4], 10)
+  expect_equal(bands[[2]][4], 1000)
+  expect_equal(bands[[3]][4], 5)
   expect_identical(draw_order, rep(c("band", "line", "line"), 3))
   expect_equal(pairs, original)
 
@@ -199,6 +199,94 @@ test_that("FireSense reference shading uses exact visible years in every metric 
   summary_env$birdPlotAcrossReplicateMetrics(partial, root, "meanDensity")
   expect_length(bands, 4)
   expect_false("FireSense NRV reference years" %in% labels[[5]])
+})
+
+test_that("current-condition lines use each species and metric's five-replicate 2020 median", {
+  root <- withr::local_tempdir()
+  pairs <- data.table::CJ(species = c("GCKI", "RCKI"), repID = paste0("rep", 1:5),
+                          year = c(2020L, 2120L))
+  pairs[, meanDensity := c(1, 2, 3, 4, 100)[match(repID, paste0("rep", 1:5))] +
+          ifelse(year == 2020L, 0, 1000) + ifelse(species == "GCKI", 0, 10)]
+  pairs[, `:=`(medianDensity = meanDensity / 2, totalAbundance = meanDensity * 100)]
+  baselines <- numeric()
+  labels <- list()
+  original_abline <- graphics::abline
+  original_legend <- graphics::legend
+  testthat::local_mocked_bindings(
+    abline = function(..., h = NULL, col, lty, lwd = 1) {
+      if (col == "red") {
+        baselines <<- c(baselines, h)
+        expect_identical(lty, 2)
+      }
+      original_abline(..., h = h, col = col, lty = lty, lwd = lwd)
+    },
+    legend = function(x, legend, ...) {
+      labels[[length(labels) + 1L]] <<- legend
+      original_legend(x, legend, ...)
+    },
+    .package = "graphics"
+  )
+  for (metric in c("meanDensity", "totalAbundance", "medianDensity")) {
+    summary_env$birdPlotAcrossReplicateMetrics(pairs, root, metric)
+  }
+  expect_equal(baselines, c(3, 13, 300, 1300, 1.5, 6.5))
+  for (label in labels) expect_true("Current condition: 2020 median" %in% label)
+
+  expect_message(
+    summary_env$birdPlotAcrossReplicateMetrics(pairs[year == 2120L], root, "meanDensity"),
+    "2020 is not selected"
+  )
+  expect_length(baselines, 6)
+  expect_false("Current condition: 2020 median" %in% labels[[7]])
+  expect_error(
+    summary_env$birdPlotAcrossReplicateMetrics(
+      pairs[!(species == "GCKI" & repID == "rep1" & year == 2020L)], root, "meanDensity"),
+    "one valid 2020 value per replicate"
+  )
+  expect_error(
+    summary_env$birdPlotAcrossReplicateMetrics(
+      data.table::rbindlist(list(pairs, pairs[1])), root, "meanDensity"),
+    "one valid 2020 value per replicate"
+  )
+})
+
+test_that("Y-axis ticks are equally spaced and match the grid and full visible limits", {
+  root <- withr::local_tempdir()
+  axes <- list()
+  grids <- list()
+  limits <- list()
+  original_axis <- graphics::axis
+  original_abline <- graphics::abline
+  original_plot <- graphics::plot.default
+  testthat::local_mocked_bindings(
+    axis = function(side, at, ...) {
+      if (side == 2) axes[[length(axes) + 1L]] <<- at
+      original_axis(side, at = at, ...)
+    },
+    abline = function(..., h = NULL, col) {
+      if (col == "grey90" && !is.null(h)) grids[[length(grids) + 1L]] <<- h
+      original_abline(..., h = h, col = col)
+    },
+    plot.default = function(..., ylim, yaxt, yaxs) {
+      limits[[length(limits) + 1L]] <<- ylim
+      expect_identical(yaxt, "n")
+      expect_identical(yaxs, "i")
+      original_plot(..., ylim = ylim, yaxt = yaxt, yaxs = yaxs)
+    },
+    .package = "graphics"
+  )
+  for (values in list(c(0, 0), c(0.00012, 0.00037), c(2, 8), c(20000, 81000))) {
+    pairs <- data.table::data.table(species = "GCKI", repID = "rep1",
+                                    year = c(2020L, 2120L), meanDensity = values)
+    summary_env$birdPlotAcrossReplicateMetrics(pairs, root, "meanDensity")
+    ticks <- axes[[length(axes)]]
+    expect_gte(length(ticks), 3L)
+    expect_equal(diff(ticks), rep(diff(ticks)[1], length(ticks) - 1L))
+    expect_equal(ticks[1], 0)
+    expect_gt(tail(ticks, 1), max(values))
+    expect_equal(tail(limits, 1)[[1]], range(ticks))
+  }
+  expect_equal(axes, grids)
 })
 
 test_that("plot metric choices fail clearly when unsupported or duplicated", {
@@ -228,7 +316,7 @@ test_that("NRV plot lines show species and metric specific sample bounds and cou
   original_abline <- graphics::abline
   original_mtext <- graphics::mtext
   testthat::local_mocked_bindings(
-    abline = function(..., h, col) {
+    abline = function(..., h = NULL, col) {
       if (col == "#9A4B25") lines[[length(lines) + 1L]] <<- h
       original_abline(..., h = h, col = col)
     },

@@ -1,14 +1,14 @@
-test_that("area weighting and abundance use actual km2 cell areas", {
+test_that("per-hectare density integrates with actual cell areas in hectares", {
   raster <- terra::rast(nrows = 2, ncols = 1, xmin = 0, xmax = 1,
                         ymin = 0, ymax = 60, crs = "EPSG:4326")
   terra::values(raster) <- c(10, 2)
   area <- as.vector(terra::values(terra::cellSize(raster, unit = "km")))
   out <- summary_env$birdRasterMetrics(raster)
-  expect_equal(out$totalAbundance, sum(c(10, 2) * area))
+  expect_equal(out$totalAbundance, sum(c(10, 2) * area * 100))
   expect_equal(out$meanDensity, sum(c(10, 2) * area) / sum(area))
   expect_false(isTRUE(all.equal(out$meanDensity, 6)))
   expect_equal(out$medianDensity, 6)
-  expect_identical(out$densityUnits, "males/km2")
+  expect_identical(out$densityUnits, "males/ha")
   expect_identical(out$abundanceUnits, "males")
   expect_equal(out$nValidCells, 2)
 })
@@ -97,7 +97,7 @@ test_that("NRV bounds pool individual reference snapshots, not annual means or o
   density <- bounds[metric == "meanDensity"]
   expect_equal(density$lower, c(1, 101))
   expect_equal(density$upper, c(8, 108))
-  expect_true(all(density$units == "males/km2"))
+  expect_true(all(density$units == "males/ha"))
   abundance <- bounds[metric == "totalAbundance"]
   expect_equal(abundance$lower, c(10, 1010))
   expect_equal(abundance$upper, c(80, 1080))

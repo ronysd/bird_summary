@@ -121,7 +121,7 @@ test_that("multi mode rejects inconsistent bootstrap mapping and corrupted metri
   data.table::fwrite(keys, file)
   expect_error(summary_env$birdReadPairTables(file, config), "exactly one bootstrapID")
   keys$bootstrapID[1] <- 31
-  keys$densityUnits[1] <- "males/ha"
+  keys$densityUnits[1] <- "males/pixel"
   data.table::fwrite(keys, file)
   expect_error(summary_env$birdReadPairTables(file, config), "response units")
   keys$densityUnits[1] <- "males/km2"

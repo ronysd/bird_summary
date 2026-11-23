@@ -11,6 +11,22 @@ birdSummaryConfig <- function(sim, resolveSpecies = TRUE) {
     stop("bird_summary: mode must be single or multi.")
   }
   config <- list(mode = p$mode)
+  if (!is.character(p$currentCondition) || length(p$currentCondition) != 1L ||
+      is.na(p$currentCondition) || !p$currentCondition %in% c("BAM", "SIM", "both")) {
+    stop("bird_summary: currentCondition must be BAM, SIM, or both.")
+  }
+  config$currentCondition <- p$currentCondition
+  if (!is.character(p$bamRegion) || length(p$bamRegion) != 1L ||
+      is.na(p$bamRegion) || !p$bamRegion %in% c("Canada", "Alaska", "Lower48")) {
+    stop("bird_summary: bamRegion must be Canada, Alaska, or Lower48.")
+  }
+  config$bamRegion <- p$bamRegion
+  units <- p$predictionDensityUnits
+  if (!is.character(units) || length(units) != 1L || is.na(units) ||
+      !units %in% c("males/ha", "males/km2")) {
+    stop("bird_summary: predictionDensityUnits must be males/ha or males/km2.")
+  }
+  config$predictionDensityUnits <- units
   if (!is.logical(p$calculateNRV) || length(p$calculateNRV) != 1L || is.na(p$calculateNRV)) {
     stop("bird_summary: calculateNRV must be TRUE or FALSE.")
   }
@@ -50,6 +66,10 @@ birdSummaryConfig <- function(sim, resolveSpecies = TRUE) {
     stop("bird_summary: years must be explicit, unique four-digit simulation years.")
   }
   config$years <- sort(as.integer(years))
+  if (p$mode == "multi" && p$currentCondition == "both" &&
+      !2020L %in% config$years) {
+    stop("bird_summary: currentCondition both requires 2020 in years.")
+  }
   if (config$calculateNRV && !all(c(2720L, 2820L, 2920L, 3020L) %in% config$years)) {
     stop("bird_summary: calculateNRV requires years to include 2720, 2820, 2920, 3020.")
   }

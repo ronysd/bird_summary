@@ -10,6 +10,8 @@ summary_env$end <- function(sim) 2021
 
 summary_parameters <- function(mode = "single", rep = "rep1", boot = 31) {
   list(mode = mode, reps = 1L:2L, years = 2020L:2021L, calculateNRV = FALSE,
+       currentCondition = "SIM", bamRegion = "Canada",
+       predictionDensityUnits = "males/ha",
        plotMetrics = c("meanDensity", "totalAbundance", "medianDensity"),
        species = c("GCKI", "RCKI"), repID = rep, bootstrapID = boot,
        scenario = "reference", climateScenario = "CanESM5_SSP370",

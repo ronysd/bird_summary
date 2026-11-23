@@ -63,7 +63,7 @@ birdReadPairTables <- function(files, config) {
     table[, sourceFile := files[i]]
     tables[[i]] <- table
   }
-  pairs <- data.table::rbindlist(tables, use.names = TRUE)
+  pairs <- data.table::rbindlist(tables, use.names = TRUE, fill = TRUE)
   selected <- pairs$scenario == config$scenario &
     pairs$climateScenario == config$climateScenario &
     pairs$studyAreaName == config$studyAreaName &
@@ -94,7 +94,7 @@ birdReadPairTables <- function(files, config) {
   if (any(pairs$bootstrapID < 1 | pairs$bootstrapID != floor(pairs$bootstrapID)) ||
       any(pairs$nValidCells < 1 | pairs$nValidCells != floor(pairs$nValidCells)) ||
       any(pairs$validAreaKm2 <= 0) ||
-      any(pairs$densityUnits != "males/km2" | pairs$abundanceUnits != "males")) {
+      any(!pairs$densityUnits %in% c("males/ha", "males/km2") | pairs$abundanceUnits != "males")) {
     stop("bird_summary: invalid pair identities, area, cell count or response units.")
   }
   mapping <- unique(pairs[, .(repID, bootstrapID)])
@@ -132,14 +132,51 @@ birdReadPairRaster <- function(file, species, year, repID, bootstrapID) {
 
 #' Verify raster identity, geometry, reporting support and persisted metric values
 #' @param pairs Validated pair metrics table.
-#' @return Invisible TRUE.
+#' @param predictionDensityUnits Optional confirmed raw raster units. When supplied,
+#'   return updated records, recalculating legacy metrics from existing rasters.
+#' @return Invisible TRUE, or updated records when predictionDensityUnits is supplied.
 #' @keywords internal
-birdValidatePairRasters <- function(pairs) {
+birdValidatePairRasters <- function(pairs, predictionDensityUnits = NULL) {
+  if (!is.null(predictionDensityUnits) &&
+      (!is.character(predictionDensityUnits) || length(predictionDensityUnits) != 1L ||
+       is.na(predictionDensityUnits) ||
+       !predictionDensityUnits %in% c("males/ha", "males/km2"))) {
+    stop("bird_summary: unsupported predictionDensityUnits.")
+  }
+  updated <- data.table::copy(pairs)
+  if (!"sourceDensityUnits" %in% names(updated)) updated[, sourceDensityUnits := NA_character_]
+  if (!"reportingSupport" %in% names(updated)) updated[, reportingSupport := "full_prediction"]
+  updated[is.na(reportingSupport), reportingSupport := "full_prediction"]
+  legacy <- is.na(updated$sourceDensityUnits)
+  if (!is.null(predictionDensityUnits) && any(legacy)) {
+    message("bird_summary: regenerating ", sum(legacy),
+            " legacy records from existing rasters using confirmed raw units ",
+            predictionDensityUnits, "; source rasters and pair CSVs are unchanged.")
+  }
   templates <- list()
   for (i in seq_len(nrow(pairs))) {
-    row <- pairs[i]
+    row <- updated[i]
     file <- row$rasterPath
     raster <- birdReadPairRaster(file, row$species, row$year, row$repID, row$bootstrapID)
+    if (!row$reportingSupport %in% c("full_prediction", "bam_2020_valid")) {
+      stop("bird_summary: unsupported reportingSupport: ", row$reportingSupport)
+    }
+    if (row$reportingSupport == "bam_2020_valid") {
+      mask_file <- row$reportingMaskPath
+      if (!is.character(mask_file) || length(mask_file) != 1L ||
+          is.na(mask_file) || !file.exists(mask_file)) {
+        stop("bird_summary: BAM-supported records require an existing reportingMaskPath.")
+      }
+      reporting_mask <- terra::rast(mask_file)
+      if (!terra::compareGeom(raster, reporting_mask, stopOnError = FALSE) ||
+          terra::nlyr(reporting_mask) != 1L ||
+          terra::global(!is.na(reporting_mask) & reporting_mask != 1, "sum", na.rm = TRUE)[1, 1] > 0) {
+        stop("bird_summary: invalid saved BAM reporting mask: ", mask_file)
+      }
+      missing <- terra::global(!is.na(reporting_mask) & is.na(raster), "sum", na.rm = TRUE)[1, 1]
+      if (missing > 0) stop("bird_summary: simulation missing within fixed BAM reporting mask: ", file)
+      raster <- terra::mask(raster, reporting_mask)
+    }
     template <- templates[[row$species]]
     if (!is.null(template)) {
       if (!terra::compareGeom(template, raster, stopOnError = FALSE)) {
@@ -150,12 +187,32 @@ birdValidatePairRasters <- function(pairs) {
     } else {
       templates[[row$species]] <- raster
     }
-    metrics <- birdRasterMetrics(raster)
+    recorded_units <- if (legacy[i]) row$densityUnits else row$sourceDensityUnits
+    if (!is.null(predictionDensityUnits) && !legacy[i] &&
+        !identical(recorded_units, predictionDensityUnits)) {
+      stop("bird_summary: configured predictionDensityUnits disagree with recorded raster units: ", file)
+    }
+    metrics <- birdRasterMetrics(raster, recorded_units)
+    persisted <- data.table::copy(metrics)
+    if (row$densityUnits == "males/km2") {
+      persisted[, `:=`(meanDensity = meanDensity * 100, medianDensity = medianDensity * 100)]
+    } else if (row$densityUnits != "males/ha") {
+      stop("bird_summary: unsupported persisted density units: ", row$densityUnits)
+    }
     for (field in c("meanDensity", "medianDensity", "totalAbundance", "nValidCells", "validAreaKm2")) {
-      if (!isTRUE(all.equal(metrics[[field]], row[[field]], tolerance = 1e-6, check.attributes = FALSE))) {
+      if (!isTRUE(all.equal(persisted[[field]], row[[field]], tolerance = 1e-6, check.attributes = FALSE))) {
         stop("bird_summary: persisted metrics disagree with raster for ", field, ": ", file)
       }
     }
+    if (!is.null(predictionDensityUnits)) {
+      if (legacy[i] || row$densityUnits != "males/ha") {
+        corrected <- if (recorded_units == predictionDensityUnits) metrics else
+          birdRasterMetrics(raster, predictionDensityUnits)
+        for (field in names(corrected)) data.table::set(updated, i, field, corrected[[field]])
+      }
+      data.table::set(updated, i, "sourceDensityUnits", predictionDensityUnits)
+    }
   }
+  if (!is.null(predictionDensityUnits)) return(updated)
   invisible(TRUE)
 }
